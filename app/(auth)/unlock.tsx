@@ -1,13 +1,21 @@
 import { Button, Text, View } from "react-native";
 import { router } from "expo-router";
+import * as LocalAuthentication from "expo-local-authentication";
 import { useAuthStore } from "@/src/store/auth-store";
 
 export default function UnlockScreen() {
   const unlock = useAuthStore((state) => state.unlock);
 
-  const handleUnlock = () => {
-    unlock();
-    router.replace("/(app)");
+  const handleUnlock = async () => {
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: "Unlock Noting",
+      fallbackLabel: "Use passcode",
+    });
+
+    if (result.success) {
+      unlock();
+      router.replace("/(app)");
+    }
   };
 
   return (
