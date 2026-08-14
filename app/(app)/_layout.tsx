@@ -1,14 +1,12 @@
 import { Stack } from "expo-router";
+import AuthGate from "@/src/components/AuthGate";
 
-export default function AppLayout() {
+export default function RootLayout() {
   return (
-    <Stack>
-      <Stack.Screen
-        name="index"
-        options={{
-          title: "Noting",
-        }}
-      />
-    </Stack>
+    <>
+      <AuthGate />
+
+      <Stack screenOptions={{ headerShown: false }} />
+    </>
   );
 }
