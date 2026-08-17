@@ -1,12 +1,18 @@
 import { Stack } from "expo-router";
-import AuthGate from "@/src/components/AuthGate";
 
-export default function RootLayout() {
+import { useTheme } from "@/src/theme";
+
+export default function AppLayout() {
+  const theme = useTheme();
+
   return (
-    <>
-      <AuthGate />
-
-      <Stack screenOptions={{ headerShown: false }} />
-    </>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        // Opening a note is a push into detail, so it slides.
+        animation: "slide_from_right",
+        contentStyle: { backgroundColor: theme.colors.background },
+      }}
+    />
   );
 }
