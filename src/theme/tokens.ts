@@ -114,5 +114,12 @@ export const springs = {
   settle: { stiffness: 260, damping: 22, mass: 0.9 },
 } as const;
 
+/**
+ * Either spring. `as const` gives each one its own literal type, so a helper
+ * that takes "a spring" has to name the union or it only ever accepts the first
+ * one it was written against.
+ */
+export type SpringConfig = (typeof springs)[keyof typeof springs];
+
 /** Android's minimum comfortable touch target. */
 export const TOUCH_TARGET = 48;

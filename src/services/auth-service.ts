@@ -1,6 +1,15 @@
 import * as LocalAuthentication from "expo-local-authentication";
 
+import type { IconName } from "@/src/components/ui/Icon";
+
 export type BiometricKind = "fingerprint" | "face" | "iris";
+
+/**
+ * Which platform's vocabulary to use. Passed in rather than read from
+ * `Platform.OS` so this module stays free of React Native and can be tested for
+ * both platforms at once.
+ */
+export type OS = "ios" | "android" | string;
 
 export type Capability = {
   hasHardware: boolean;
@@ -41,17 +50,55 @@ function toKind(
   }
 }
 
-/** How to refer to a modality in user-facing copy. */
-export function describeKind(kind: BiometricKind | null): string {
+/**
+ * Which modality the app names when a device offers several.
+ *
+ * Face first, then fingerprint, then iris.
+ *
+ * Worth being clear about what this does and does not control: on a device with
+ * more than one sensor the *platform* decides which one its prompt uses, and no
+ * app can override that. So this picks which one to name — and naming the one the
+ * device leads with is what makes the screen match what then happens. On iOS the
+ * question never arises, since a device has Face ID or Touch ID, never both.
+ */
+export function pickPrimary(kinds: BiometricKind[]): BiometricKind | null {
+  const order: BiometricKind[] = ["face", "fingerprint", "iris"];
+
+  return order.find((kind) => kinds.includes(kind)) ?? null;
+}
+
+/**
+ * How to refer to a modality in user-facing copy.
+ *
+ * Platform-specific because these are proper nouns on iOS and plain descriptions
+ * on Android: "Face ID" is a feature name, "face unlock" is a thing the phone does.
+ * Getting this wrong is the kind of detail that makes an app feel foreign.
+ */
+export function describeMethod(kind: BiometricKind | null, os: OS): string {
+  const isApple = os === "ios";
+
   switch (kind) {
     case "fingerprint":
-      return "fingerprint";
+      return isApple ? "Touch ID" : "fingerprint";
     case "face":
-      return "face";
+      return isApple ? "Face ID" : "face unlock";
     case "iris":
       return "iris";
     default:
       return "biometrics";
+  }
+}
+
+/** The icon that stands for a modality. */
+export function methodIcon(kind: BiometricKind | null): IconName {
+  switch (kind) {
+    case "face":
+      return "face";
+    case "fingerprint":
+    case "iris":
+      return "fingerprint";
+    default:
+      return "lock";
   }
 }
 
@@ -71,10 +118,7 @@ export async function probeCapability(): Promise<Capability> {
     hasHardware,
     isEnrolled,
     kinds,
-    // Fingerprint first when a device offers several: it is the fastest and the
-    // one users expect on Android.
-    primary:
-      kinds.find((kind) => kind === "fingerprint") ?? kinds[0] ?? null,
+    primary: pickPrimary(kinds),
     hasDeviceCredential: level !== LocalAuthentication.SecurityLevel.NONE,
   };
 }
@@ -143,18 +187,29 @@ function mapError(error: string): AuthOutcome {
 }
 
 /**
- * Opens the biometric prompt.
+ * Opens the platform's biometric prompt.
  *
- * There is exactly one authentication path in Noting — both the primary unlock
- * action and the "Use passcode" action land here. The app deliberately has no
- * passcode UI of its own: `disableDeviceFallback: false` leaves the device
- * credential available as the platform's own fallback *inside* the system
- * prompt, which is the only place it belongs.
+ * `disableDeviceFallback: false` leaves the device's own PIN or pattern available
+ * inside the system prompt. Noting's passcode is a separate, app-level path — see
+ * `passcode-service` — and having both is deliberate: the app one works when
+ * biometrics are locked out, and the platform one works when the app's passcode
+ * has been forgotten but the phone's has not.
+ *
+ * @param method  Named in the prompt so the sentence matches the sensor the device
+ *                is about to use ("Confirm with Face ID").
  */
-export async function authenticate(): Promise<AuthOutcome> {
+export async function authenticate(
+  method?: BiometricKind | null,
+  os: OS = "android",
+): Promise<AuthOutcome> {
+  const named = describeMethod(method ?? null, os);
+
   const result = await LocalAuthentication.authenticateAsync({
     promptMessage: "Unlock Noting",
-    promptSubtitle: "Confirm it’s you to open your notes",
+    promptSubtitle:
+      method === null || method === undefined
+        ? "Confirm it’s you to open your notes"
+        : `Confirm with ${named} to open your notes`,
     cancelLabel: "Cancel",
     disableDeviceFallback: false,
     // Class 3 biometrics only. The default ('weak') also admits 2D camera face

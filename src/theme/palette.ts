@@ -37,7 +37,8 @@ export type Palette = {
   successSubtle: string;
   danger: string;
   dangerSubtle: string;
-  favorite: string;
+  /** The pinned marker. Warm, so it reads as a state rather than an action. */
+  pin: string;
 
   /** Shadow color; effectively invisible in dark mode, where borders carry depth. */
   shadow: string;
@@ -65,7 +66,7 @@ export const darkPalette: Palette = {
   successSubtle: "rgba(95, 207, 158, 0.13)",
   danger: "#F0787D",
   dangerSubtle: "rgba(240, 120, 125, 0.13)",
-  favorite: "#E5B45C",
+  pin: "#E5B45C",
 
   shadow: "#000000",
 };
@@ -92,7 +93,7 @@ export const lightPalette: Palette = {
   successSubtle: "rgba(28, 154, 106, 0.10)",
   danger: "#D23A44",
   dangerSubtle: "rgba(210, 58, 68, 0.09)",
-  favorite: "#C1881A",
+  pin: "#C1881A",
 
   shadow: "#1A1A2E",
 };

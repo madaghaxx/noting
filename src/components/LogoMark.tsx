@@ -4,6 +4,11 @@ import { useTheme } from "@/src/theme";
 
 type Props = {
   size?: number;
+  /**
+   * Sits on a surface rather than on the page. Without this the mark's own
+   * surface colour matches the panel behind it and only its border shows.
+   */
+  raised?: boolean;
 };
 
 /**
@@ -13,7 +18,7 @@ type Props = {
  * biometric badge, and repeating it here would make the screen read as being
  * about security rather than about writing.
  */
-export default function LogoMark({ size = 46 }: Props) {
+export default function LogoMark({ size = 46, raised = false }: Props) {
   const theme = useTheme();
 
   const rules = [
@@ -30,7 +35,9 @@ export default function LogoMark({ size = 46 }: Props) {
           width: size,
           height: size,
           borderRadius: size * 0.3,
-          backgroundColor: theme.colors.surface,
+          backgroundColor: raised
+            ? theme.colors.surfaceRaised
+            : theme.colors.surface,
           borderColor: theme.colors.border,
           gap: size * 0.09,
         },

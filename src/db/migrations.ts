@@ -55,6 +55,33 @@ const MIGRATIONS: Migration[] = [
       CREATE INDEX idx_notes_order ON notes (is_pinned DESC, position ASC);
     `);
   },
+
+  /**
+   * v2 -> v3: deleting became reversible.
+   *
+   * `deleted_at` is null for a live note and holds the deletion time for one in
+   * Recently Deleted, which is also what the trash screen shows. A nullable
+   * column rather than a separate table: a deleted note is the same note, and
+   * copying rows between tables would be a chance to lose the id, position or
+   * pin state that a restore has to put back.
+   *
+   * Both indexes are partial. Every query in the app either wants live notes or
+   * deleted ones, never both, so each index covers one of those and neither
+   * carries rows the other would have to skip.
+   */
+  async (db) => {
+    await db.execAsync(`
+      ALTER TABLE notes ADD COLUMN deleted_at INTEGER;
+
+      DROP INDEX IF EXISTS idx_notes_order;
+
+      CREATE INDEX idx_notes_order ON notes (is_pinned DESC, position ASC)
+        WHERE deleted_at IS NULL;
+
+      CREATE INDEX idx_notes_trash ON notes (deleted_at DESC)
+        WHERE deleted_at IS NOT NULL;
+    `);
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;

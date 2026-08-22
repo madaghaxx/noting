@@ -14,17 +14,27 @@ type PendingDeletion = {
 
 type NotesState = {
   notes: Note[];
+  /** Recently Deleted, most recently deleted first. */
+  deleted: Note[];
   status: Status;
   error: string | null;
   query: string;
   pendingDeletion: PendingDeletion | null;
 
   load: () => Promise<void>;
+  loadDeleted: () => Promise<void>;
   create: (draft: NoteDraft) => Promise<Note | null>;
   update: (id: string, draft: NoteDraft) => Promise<void>;
+  /** Moves a note to Recently Deleted. Nothing is destroyed. */
   remove: (id: string) => Promise<void>;
   undoRemove: () => Promise<void>;
   dismissDeletion: () => void;
+  /** Brings a note back out of Recently Deleted. */
+  restore: (id: string) => Promise<void>;
+  /** Destroys one note for good. Only reachable from Recently Deleted. */
+  purge: (id: string) => Promise<void>;
+  /** Empties Recently Deleted. */
+  purgeAll: () => Promise<void>;
   togglePin: (id: string) => Promise<void>;
   reorder: (from: number, to: number) => Promise<void>;
   setQuery: (query: string) => void;
@@ -49,6 +59,13 @@ function compareNotes(a: Note, b: Note): number {
   return a.position - b.position;
 }
 
+/** Mirrors `ORDER BY deleted_at DESC, position ASC` for the trash list. */
+function compareDeleted(a: Note, b: Note): number {
+  const gap = (b.deletedAt ?? 0) - (a.deletedAt ?? 0);
+
+  return gap !== 0 ? gap : a.position - b.position;
+}
+
 /**
  * Owns the in-memory view of the notes table.
  *
@@ -58,6 +75,7 @@ function compareNotes(a: Note, b: Note): number {
  */
 export const useNotesStore = create<NotesState>((set, get) => ({
   notes: [],
+  deleted: [],
   status: "idle",
   error: null,
   query: "",
@@ -71,6 +89,19 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       set({ notes, status: "ready" });
     } catch (error) {
       set({ status: "error", error: describe(error) });
+    }
+  },
+
+  /**
+   * Read separately from `load`, and only by the screen that shows it: the trash
+   * is the one list whose contents the home screen never needs, and loading it
+   * eagerly would keep deleted note bodies in memory for no reason.
+   */
+  loadDeleted: async () => {
+    try {
+      set({ deleted: await repository.listDeletedNotes(), error: null });
+    } catch (error) {
+      set({ error: describe(error) });
     }
   },
 
@@ -113,30 +144,51 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   },
 
   /**
-   * Deletes immediately and remembers enough to put the note back.
+   * Moves a note to Recently Deleted, and remembers where it sat so undo can put
+   * it back rather than on top.
    *
-   * The row really does leave SQLite — undo re-inserts it with its original id,
-   * position and timestamps, so a restored note is indistinguishable from one
-   * that was never deleted. The alternative (deferring the delete until the undo
-   * window closes) would leave the note present if the app were killed mid-window.
+   * The row itself never leaves SQLite — only its `deleted_at` is written — so a
+   * note recovered from the trash is indistinguishable from one that was never
+   * deleted, and an app killed mid-undo-window loses nothing.
    */
   remove: async (id) => {
-    const previous = get().notes;
-    const index = previous.findIndex((note) => note.id === id);
-    const note = previous[index];
+    const previousNotes = get().notes;
+    const previousDeleted = get().deleted;
+    const index = previousNotes.findIndex((note) => note.id === id);
+    const note = previousNotes[index];
 
     if (!note) return;
 
+    // Optimistic: the row leaves the list and joins the trash on this frame. The
+    // timestamp is provisional and gets replaced by the one the write returns.
+    const deletedAt = Date.now();
+
     set({
-      notes: previous.filter((candidate) => candidate.id !== id),
+      notes: previousNotes.filter((candidate) => candidate.id !== id),
+      deleted: [{ ...note, deletedAt }, ...previousDeleted],
       pendingDeletion: { note, index },
       error: null,
     });
 
     try {
-      await repository.deleteNote(id);
+      const written = await repository.softDeleteNote(id);
+
+      set((state) => ({
+        deleted: state.deleted
+          .map((candidate) =>
+            candidate.id === id
+              ? { ...candidate, deletedAt: written }
+              : candidate,
+          )
+          .sort(compareDeleted),
+      }));
     } catch (error) {
-      set({ notes: previous, pendingDeletion: null, error: describe(error) });
+      set({
+        notes: previousNotes,
+        deleted: previousDeleted,
+        pendingDeletion: null,
+        error: describe(error),
+      });
     }
   },
 
@@ -145,26 +197,87 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
     if (!pending) return;
 
-    const restored = [...get().notes];
-    restored.splice(Math.min(pending.index, restored.length), 0, pending.note);
+    set({ pendingDeletion: null });
+
+    await get().restore(pending.note.id);
+  },
+
+  dismissDeletion: () => set({ pendingDeletion: null }),
+
+  /**
+   * Brings a note back out of Recently Deleted.
+   *
+   * It returns to the section and position it left with, so restoring is the
+   * exact inverse of deleting — including whether it was pinned.
+   */
+  restore: async (id) => {
+    const previousNotes = get().notes;
+    const previousDeleted = get().deleted;
+    const note = previousDeleted.find((candidate) => candidate.id === id);
+
+    if (!note) return;
+
+    const revived: Note = { ...note, deletedAt: null };
 
     set({
-      notes: restored.sort(compareNotes),
-      pendingDeletion: null,
+      notes: [...previousNotes, revived].sort(compareNotes),
+      deleted: previousDeleted.filter((candidate) => candidate.id !== id),
+      pendingDeletion:
+        get().pendingDeletion?.note.id === id ? null : get().pendingDeletion,
       error: null,
     });
 
     try {
-      await repository.restoreNote(pending.note);
+      await repository.restoreDeletedNote(id);
     } catch (error) {
-      set((state) => ({
-        notes: state.notes.filter((note) => note.id !== pending.note.id),
+      set({
+        notes: previousNotes,
+        deleted: previousDeleted,
         error: describe(error),
-      }));
+      });
     }
   },
 
-  dismissDeletion: () => set({ pendingDeletion: null }),
+  /**
+   * Destroys one note for good.
+   *
+   * Only ever called from Recently Deleted, and the repository refuses ids that
+   * are not already there — so this cannot be reached in one step from a live
+   * note, by any path.
+   */
+  purge: async (id) => {
+    const previousDeleted = get().deleted;
+
+    if (!previousDeleted.some((note) => note.id === id)) return;
+
+    set({
+      deleted: previousDeleted.filter((note) => note.id !== id),
+      // A purged note has no undo left to offer.
+      pendingDeletion:
+        get().pendingDeletion?.note.id === id ? null : get().pendingDeletion,
+      error: null,
+    });
+
+    try {
+      await repository.purgeNote(id);
+    } catch (error) {
+      set({ deleted: previousDeleted, error: describe(error) });
+    }
+  },
+
+  purgeAll: async () => {
+    const previousDeleted = get().deleted;
+
+    if (previousDeleted.length === 0) return;
+
+    set({ deleted: [], pendingDeletion: null, error: null });
+
+    try {
+      await repository.purgeAllDeleted();
+    } catch (error) {
+      set({ deleted: previousDeleted, error: describe(error) });
+    }
+  },
 
   togglePin: async (id) => {
     const previous = get().notes;
@@ -216,11 +329,21 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       candidate && candidate.isPinned === moved.isPinned ? candidate : null;
 
     try {
-      const exhausted = await repository.moveNote(
+      const { position, exhausted } = await repository.moveNote(
         moved.id,
         sameSection(reordered[index - 1]),
         sameSection(reordered[index + 1]),
       );
+
+      // Mirror the position that was written. The array is already in the right
+      // order, but the moved note still carries its old position — and the next
+      // local re-sort (pinning something, say) would order by that stale value
+      // and undo the drag on screen while the database says otherwise.
+      set((state) => ({
+        notes: state.notes.map((note) =>
+          note.id === moved.id ? { ...note, position } : note,
+        ),
+      }));
 
       if (exhausted) {
         // The gap ran out of float precision. Renumber this section, then
@@ -239,11 +362,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
   /**
    * Drops every note from memory. Called on lock so note contents do not sit in
-   * the JS heap behind the unlock screen.
+   * the JS heap behind the unlock screen — the trash included, since a deleted
+   * note is still the user's writing.
    */
   reset: () =>
     set({
       notes: [],
+      deleted: [],
       status: "idle",
       error: null,
       query: "",

@@ -4,17 +4,18 @@ import { Animated, Easing, Pressable, View } from "react-native";
 import Card from "@/src/components/ui/Card";
 import AppText from "@/src/components/ui/AppText";
 import Icon from "@/src/components/ui/Icon";
+import { toPlainText } from "@/src/markdown/plain";
 import { useTheme } from "@/src/theme";
 import { motion, TOUCH_TARGET } from "@/src/theme/tokens";
 import type { Note } from "@/src/types/note";
-import { formatRelativeTime, toPreview } from "@/src/utils/format";
+import { formatRelativeTime } from "@/src/utils/format";
 
 type Props = {
   note: Note;
   /** Plays the removal animation; the row is dropped from state once it ends. */
   exiting?: boolean;
   onPress: (note: Note) => void;
-  onToggleFavorite: (note: Note) => void;
+  onTogglePin: (note: Note) => void;
   onLongPress: (note: Note) => void;
 };
 
@@ -22,11 +23,13 @@ function NoteCard({
   note,
   exiting = false,
   onPress,
-  onToggleFavorite,
+  onTogglePin,
   onLongPress,
 }: Props) {
   const theme = useTheme();
   const presence = useRef(new Animated.Value(0)).current;
+  const pinScale = useRef(new Animated.Value(1)).current;
+  const wasPinned = useRef(note.isPinned);
 
   useEffect(() => {
     Animated.timing(presence, {
@@ -37,7 +40,37 @@ function NoteCard({
     }).start();
   }, [exiting, presence]);
 
-  const preview = toPreview(note.content);
+  /**
+   * Pinning moves the row to the other section, so the pin itself needs to
+   * acknowledge the tap before the list re-sorts under the finger.
+   *
+   * Gated on an actual change rather than on `isPinned` alone: every card
+   * re-renders when any note changes, and without the guard the whole list would
+   * pulse on first paint.
+   */
+  useEffect(() => {
+    if (wasPinned.current === note.isPinned) return;
+
+    wasPinned.current = note.isPinned;
+
+    Animated.sequence([
+      Animated.timing(pinScale, {
+        toValue: 1.3,
+        duration: motion.instant,
+        easing: Easing.out(Easing.quad),
+        useNativeDriver: true,
+      }),
+      Animated.spring(pinScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        ...theme.springs.settle,
+      }),
+    ]).start();
+  }, [note.isPinned, pinScale, theme.springs.settle]);
+
+  // Through the Markdown parser rather than a regex: what the card shows is then
+  // exactly the words the rendered note shows, minus the syntax.
+  const preview = toPlainText(note.content);
   const hasTitle = note.title.length > 0;
 
   return (
@@ -93,14 +126,17 @@ function NoteCard({
           </AppText>
         </View>
 
-        {/* Nested pressable: tapping the star must not open the note. */}
+        {/* Nested pressable: tapping the pin must not open the note. */}
         <Pressable
-          onPress={() => onToggleFavorite(note)}
+          onPress={() => onTogglePin(note)}
           hitSlop={theme.spacing.xs}
           accessibilityRole="button"
-          accessibilityState={{ selected: note.isFavorite }}
-          accessibilityLabel={
-            note.isFavorite ? "Remove from favourites" : "Add to favourites"
+          accessibilityState={{ selected: note.isPinned }}
+          accessibilityLabel={note.isPinned ? "Unpin note" : "Pin note"}
+          accessibilityHint={
+            note.isPinned
+              ? "Moves the note back in with the unpinned notes."
+              : "Keeps the note above the unpinned notes."
           }
           style={{
             width: TOUCH_TARGET,
@@ -111,16 +147,16 @@ function NoteCard({
             marginRight: theme.spacing.xs,
           }}
         >
-          <Icon
-            name="star"
-            size={20}
-            filled={note.isFavorite}
-            color={
-              note.isFavorite
-                ? theme.colors.favorite
-                : theme.colors.textTertiary
-            }
-          />
+          <Animated.View style={{ transform: [{ scale: pinScale }] }}>
+            <Icon
+              name="pin"
+              size={20}
+              filled={note.isPinned}
+              color={
+                note.isPinned ? theme.colors.pin : theme.colors.textTertiary
+              }
+            />
+          </Animated.View>
         </Pressable>
       </Card>
     </Animated.View>
@@ -128,7 +164,7 @@ function NoteCard({
 }
 
 /**
- * Memoised: the list re-renders whenever any note changes, and starring one row
+ * Memoised: the list re-renders whenever any note changes, and pinning one row
  * should not repaint the rest.
  */
 export default memo(NoteCard);

@@ -1,13 +1,18 @@
 import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 
-import Icon from "@/src/components/ui/Icon";
+import Icon, { type IconName } from "@/src/components/ui/Icon";
 import { useTheme } from "@/src/theme";
 
 export type BadgeState = "idle" | "busy" | "success" | "error";
 
 type Props = {
   state: BadgeState;
+  /**
+   * The modality this device will actually use. A fingerprint drawn on a Face ID
+   * phone is a small lie that the user notices immediately.
+   */
+  icon?: IconName;
 };
 
 const OUTER = 148;
@@ -24,7 +29,10 @@ const PULSE_GAP = 750;
  * scanning grid, nothing that would make a private notebook look like a
  * security console.
  */
-export default function BiometricBadge({ state }: Props) {
+export default function BiometricBadge({
+  state,
+  icon = "fingerprint",
+}: Props) {
   const theme = useTheme();
 
   const pulseA = useRef(new Animated.Value(0)).current;
@@ -192,7 +200,7 @@ export default function BiometricBadge({ state }: Props) {
           ]}
         >
           <Icon
-            name={state === "success" ? "check" : "fingerprint"}
+            name={state === "success" ? "check" : icon}
             size={state === "success" ? 40 : 38}
             color={tint}
           />

@@ -1,7 +1,8 @@
 import { create } from "zustand";
 
 import * as authService from "@/src/services/auth-service";
-import type { Capability } from "@/src/services/auth-service";
+import type { Capability, OS } from "@/src/services/auth-service";
+import * as passcodeService from "@/src/services/passcode-service";
 
 /**
  * The screen shows a distinct treatment for each of these, so they are modelled
@@ -30,33 +31,71 @@ type AuthState = {
    */
   isUnlocked: boolean;
   capability: Capability | null;
+  /** Which platform's vocabulary to use; set when the device is probed. */
+  platform: OS;
   /** User-facing explanation for the current status, when one is warranted. */
   message: string | null;
   failedAttempts: number;
 
-  probe: () => Promise<void>;
-  /**
-   * Opens the biometric prompt. Takes no options: every unlock action in the UI
-   * funnels through this one path.
-   */
+  /** Whether Noting's own passcode is configured. */
+  hasPasscode: boolean;
+  /** A passcode check is running. The derivation is deliberately not instant. */
+  checkingPasscode: boolean;
+  /** Epoch milliseconds until which passcode entry is refused; 0 when open. */
+  passcodeLockedUntil: number;
+  passcodeAttemptsLeft: number;
+
+  probe: (platform?: OS) => Promise<void>;
+  /** Opens the platform's biometric prompt. */
   authenticate: () => Promise<void>;
+  /** Checks Noting's passcode. Returns whether it was accepted. */
+  submitPasscode: (code: string) => Promise<boolean>;
+  /** Re-reads whether a passcode exists, after settings change it. */
+  refreshPasscode: () => Promise<void>;
   lock: () => void;
 };
+
+/** How long "Unlocked." stays on screen before the guard opens. */
+const CONFIRMATION_BEAT = 340;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "probing",
   isUnlocked: false,
   capability: null,
+  platform: "android",
   message: null,
   failedAttempts: 0,
+
+  hasPasscode: false,
+  checkingPasscode: false,
+  passcodeLockedUntil: 0,
+  passcodeAttemptsLeft: 5,
 
   /**
    * Establishes what this device can actually do before offering to unlock.
    * Without it the screen would advertise a fingerprint button on hardware that
    * has no sensor, and only discover the problem after a tap.
    */
-  probe: async () => {
-    set({ status: "probing", message: null });
+  probe: async (platform) => {
+    set({
+      status: "probing",
+      message: null,
+      ...(platform ? { platform } : {}),
+    });
+
+    // Read alongside the hardware probe: the unlock screen has to know about both
+    // ways in before it draws anything, or the passcode button would appear a beat
+    // after the biometric one.
+    const [hasPasscode, guard] = await Promise.all([
+      passcodeService.hasPasscode(),
+      passcodeService.readGuard(),
+    ]);
+
+    set({
+      hasPasscode,
+      passcodeLockedUntil: guard.lockedUntil,
+      passcodeAttemptsLeft: passcodeService.attemptsRemaining(guard),
+    });
 
     try {
       const capability = await authService.probeCapability();
@@ -65,9 +104,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           status: "unavailable",
           capability,
-          message: capability.hasDeviceCredential
-            ? "This device has no biometric sensor. Use your device PIN instead."
-            : "This device has no biometric sensor, and no screen lock is set.",
+          message: hasPasscode
+            ? "This device has no biometric sensor. Use your passcode instead."
+            : capability.hasDeviceCredential
+              ? "This device has no biometric sensor. Use your device PIN instead."
+              : "This device has no biometric sensor, and no screen lock is set.",
         });
         return;
       }
@@ -76,8 +117,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           status: "notEnrolled",
           capability,
-          message:
-            "No biometrics are enrolled yet. Add one in Android Settings, or use your device PIN.",
+          message: hasPasscode
+            ? "No biometrics are enrolled on this device. Use your passcode instead."
+            : "No biometrics are enrolled yet. Add one in your device settings, or use your device PIN.",
         });
         return;
       }
@@ -98,7 +140,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     set({ status: "authenticating", message: null });
 
-    const outcome = await authService.authenticate();
+    const { capability, platform } = get();
+    const outcome = await authService.authenticate(
+      capability?.primary ?? null,
+      platform,
+    );
 
     switch (outcome.kind) {
       case "success":
@@ -108,7 +154,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // this screen instantly, so without the pause the success confirmation
         // would be rendered and destroyed in the same frame — never actually
         // seen. This is the one place a deliberate delay earns its cost.
-        await new Promise((resolve) => setTimeout(resolve, 340));
+        await new Promise((resolve) => setTimeout(resolve, CONFIRMATION_BEAT));
 
         set({ isUnlocked: true });
         return;
@@ -133,17 +179,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       case "lockedOut":
         set({
           status: "lockedOut",
-          message: outcome.permanent
-            ? "Too many attempts. Unlock your device with its PIN to re-enable biometrics."
-            : "Too many attempts. Biometrics are locked for a moment — try your device PIN.",
+          message: get().hasPasscode
+            ? "Too many attempts. Use your passcode instead."
+            : outcome.permanent
+              ? "Too many attempts. Unlock your device with its PIN to re-enable biometrics."
+              : "Too many attempts. Biometrics are locked for a moment — try your device PIN.",
         });
         return;
 
       case "notEnrolled":
         set({
           status: "notEnrolled",
-          message:
-            "No biometrics are enrolled yet. Add one in Android Settings, or use your device PIN.",
+          message: get().hasPasscode
+            ? "No biometrics are enrolled on this device. Use your passcode instead."
+            : "No biometrics are enrolled yet. Add one in your device settings, or use your device PIN.",
         });
         return;
 
@@ -164,11 +213,78 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  /**
+   * Checks Noting's own passcode.
+   *
+   * Kept entirely separate from the biometric path: a device whose sensor is
+   * locked out, unenrolled or absent still has to be able to open its notes, and
+   * that is the whole reason this exists. The code itself is never stored in state
+   * — it arrives as an argument and is gone when this returns.
+   */
+  submitPasscode: async (code) => {
+    if (get().checkingPasscode) return false;
+
+    const now = Date.now();
+    const waiting = get().passcodeLockedUntil - now;
+
+    if (waiting > 0) {
+      set({
+        status: "failed",
+        message: `Too many attempts. Try again in ${Math.ceil(waiting / 1000)}s.`,
+      });
+      return false;
+    }
+
+    set({ checkingPasscode: true, message: null });
+
+    const accepted = await passcodeService.verifyPasscode(code);
+
+    if (accepted) {
+      await passcodeService.clearGuard();
+
+      set({
+        checkingPasscode: false,
+        status: "unlocked",
+        message: null,
+        failedAttempts: 0,
+        passcodeLockedUntil: 0,
+        passcodeAttemptsLeft: 5,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, CONFIRMATION_BEAT));
+
+      set({ isUnlocked: true });
+
+      return true;
+    }
+
+    const guard = await passcodeService.noteFailure(Date.now());
+    const cooldown = passcodeService.remainingLockout(guard, Date.now());
+
+    set({
+      checkingPasscode: false,
+      status: "failed",
+      passcodeLockedUntil: guard.lockedUntil,
+      passcodeAttemptsLeft: passcodeService.attemptsRemaining(guard),
+      message:
+        cooldown > 0
+          ? `Too many attempts. Try again in ${Math.ceil(cooldown / 1000)}s.`
+          : "That passcode didn’t match. Try again.",
+    });
+
+    return false;
+  },
+
+  refreshPasscode: async () => {
+    set({ hasPasscode: await passcodeService.hasPasscode() });
+  },
+
   lock: () =>
     set({
       status: "locked",
       isUnlocked: false,
       message: null,
       failedAttempts: 0,
+      checkingPasscode: false,
     }),
 }));

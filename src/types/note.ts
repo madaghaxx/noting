@@ -12,6 +12,14 @@ export type Note = {
    * rather than renumbering the list — see `moveNote` in the repository.
    */
   position: number;
+  /**
+   * When the note was moved to Recently Deleted, or null while it is live.
+   *
+   * Deleting is a soft delete: the row stays put and only this field changes, so
+   * a restore returns the note with its id, position, pin and timestamps intact.
+   * Nothing leaves the database until the user empties the trash.
+   */
+  deletedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
@@ -27,6 +35,7 @@ export type NoteRow = {
   content: string;
   is_pinned: number;
   position: number;
+  deleted_at: number | null;
   created_at: number;
   updated_at: number;
 };

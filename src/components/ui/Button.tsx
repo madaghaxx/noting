@@ -9,7 +9,7 @@ import {
 } from "react-native";
 
 import { useTheme } from "@/src/theme";
-import { TOUCH_TARGET } from "@/src/theme/tokens";
+import { TOUCH_TARGET, type SpringConfig } from "@/src/theme/tokens";
 
 import AppText from "./AppText";
 import Icon, { type IconName } from "./Icon";
@@ -47,7 +47,7 @@ export default function Button({
   const isInert = disabled || loading;
 
   const animate = useCallback(
-    (toValue: number, spring: typeof theme.springs.press) => {
+    (toValue: number, spring: SpringConfig) => {
       Animated.spring(scale, {
         toValue,
         useNativeDriver: true,

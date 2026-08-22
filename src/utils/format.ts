@@ -31,14 +31,6 @@ export function formatRelativeTime(timestamp: number): string {
 }
 
 /**
- * Collapses a note body into a single line for the list preview. Without this,
- * a note that opens with several blank lines shows an empty preview.
- */
-export function toPreview(content: string): string {
-  return content.replace(/\s+/g, " ").trim();
-}
-
-/**
  * Time-of-day greeting for the home screen header.
  *
  * Deliberately has a late-night case: "Good evening" at 3am reads as a template

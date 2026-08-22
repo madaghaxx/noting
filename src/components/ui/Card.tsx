@@ -8,6 +8,7 @@ import {
 } from "react-native";
 
 import { useTheme } from "@/src/theme";
+import type { SpringConfig } from "@/src/theme/tokens";
 
 type Props = {
   children: ReactNode;
@@ -41,7 +42,7 @@ export default function Card({
   const scale = useRef(new Animated.Value(1)).current;
 
   const animate = useCallback(
-    (toValue: number, spring: typeof theme.springs.press) => {
+    (toValue: number, spring: SpringConfig) => {
       Animated.spring(scale, {
         toValue,
         useNativeDriver: true,
