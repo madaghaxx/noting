@@ -8,7 +8,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --disable-warning=ExperimentalWarning --import ./tests/support/register.mjs --test tests/*.test.mjs"
+    "lint": "eslint .",
+    "test": "node --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./tests/support/register.mjs --test tests/*.test.mjs"
   },
   "dependencies": {
     "expo": "~54.0.35",
@@ -16,7 +17,6 @@
     "expo-linking": "~8.0.12",
     "expo-local-authentication": "~17.0.8",
     "expo-router": "~6.0.24",
-    "expo-secure-store": "~15.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
@@ -27,6 +27,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "^10.0.0",
     "typescript": "~5.9.2"
   },
   "overrides": {

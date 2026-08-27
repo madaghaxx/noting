@@ -45,7 +45,7 @@ function Row({
   onPress,
 }: {
   destination: Destination;
-  count: number | null;
+  count: number;
   isActive: boolean;
   theme: Theme;
   onPress: () => void;
@@ -55,11 +55,7 @@ function Row({
       onPress={onPress}
       accessibilityRole="link"
       accessibilityState={{ selected: isActive }}
-      accessibilityLabel={
-        count === null
-          ? destination.label
-          : `${destination.label}, ${count} ${count === 1 ? "item" : "items"}`
-      }
+      accessibilityLabel={`${destination.label}, ${count} ${count === 1 ? "item" : "items"}`}
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
@@ -92,7 +88,7 @@ function Row({
 
       {/* Zero is left off rather than shown: an empty destination should look
           quiet, not like a counter stuck at nothing. */}
-      {count !== null && count > 0 && (
+      {count > 0 && (
         <AppText variant="caption" tone={isActive ? "accent" : "tertiary"}>
           {count}
         </AppText>
@@ -330,7 +326,7 @@ export default function Sidebar() {
             <Row
               key={destination.key}
               destination={destination}
-              count={destination.badge ? counts[destination.badge] : null}
+              count={counts[destination.badge]}
               isActive={destination.key === active}
               theme={theme}
               onPress={() => go(destination)}

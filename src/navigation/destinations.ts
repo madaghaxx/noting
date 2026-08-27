@@ -7,12 +7,7 @@ import type { IconName } from "@/src/components/ui/Icon";
  * one counts as active are plain values that can be reasoned about — and tested —
  * without rendering anything.
  */
-export type DestinationKey =
-  | "all"
-  | "pinned"
-  | "trash"
-  | "images"
-  | "settings";
+export type DestinationKey = "all" | "pinned" | "trash";
 
 /** Which running total to show alongside a label. */
 export type BadgeSource = "notes" | "pinned" | "deleted";
@@ -21,8 +16,8 @@ export type Destination = {
   key: DestinationKey;
   label: string;
   icon: IconName;
-  pathname: "/" | "/pinned" | "/trash" | "/images" | "/settings";
-  badge?: BadgeSource;
+  pathname: "/" | "/pinned" | "/trash";
+  badge: BadgeSource;
 };
 
 /**
@@ -54,18 +49,6 @@ export const DESTINATIONS: readonly Destination[] = [
     pathname: "/trash",
     badge: "deleted",
   },
-  {
-    key: "images",
-    label: "Favorite Images",
-    icon: "image",
-    pathname: "/images",
-  },
-  {
-    key: "settings",
-    label: "Settings",
-    icon: "sliders",
-    pathname: "/settings",
-  },
 ];
 
 /**
@@ -78,8 +61,6 @@ export const DESTINATIONS: readonly Destination[] = [
 export function activeDestination(pathname: string): DestinationKey {
   if (pathname.startsWith("/pinned")) return "pinned";
   if (pathname.startsWith("/trash")) return "trash";
-  if (pathname.startsWith("/images")) return "images";
-  if (pathname.startsWith("/settings")) return "settings";
 
   return "all";
 }

@@ -333,8 +333,12 @@ test("reset clears the trash as well as the list", async () => {
   await store().remove(store().notes[0].id);
   assert.ok(store().deleted.length > 0);
 
+  // A search term is a hint about what the notes contain, so it goes too.
+  store().setQuery("something private");
+
   store().reset();
 
   assert.deepEqual(store().notes, []);
   assert.deepEqual(store().deleted, []);
+  assert.equal(store().query, "");
 });

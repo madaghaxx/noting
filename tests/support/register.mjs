@@ -26,7 +26,6 @@ const ROOT = resolvePath(HERE, "../..");
 const STANDINS = {
   "expo-sqlite": "expo-sqlite.mjs",
   "expo-local-authentication": "expo-local-authentication.mjs",
-  "expo-secure-store": "expo-secure-store.mjs",
 };
 
 function probe(base) {

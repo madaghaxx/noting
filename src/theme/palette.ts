@@ -36,7 +36,20 @@ export type Palette = {
   success: string;
   successSubtle: string;
   danger: string;
+  /** Low-opacity danger wash: a destructive action at rest. */
   dangerSubtle: string;
+  /**
+   * A destructive action that is *armed* — released now, it happens.
+   *
+   * Its own token rather than `danger` used as a fill, because a saturated red
+   * covering a whole row is the one thing in this app bright enough to hurt at
+   * night. Dark mode deepens instead: a low-chroma maroon that still belongs to
+   * the neutral ramp, clearly a step past `dangerSubtle`. Light mode does fill,
+   * since on a white page a tint is not a strong enough signal.
+   */
+  dangerStrong: string;
+  /** Text and icons on top of `dangerStrong`. */
+  onDanger: string;
   /** The pinned marker. Warm, so it reads as a state rather than an action. */
   pin: string;
 
@@ -66,6 +79,8 @@ export const darkPalette: Palette = {
   successSubtle: "rgba(95, 207, 158, 0.13)",
   danger: "#F0787D",
   dangerSubtle: "rgba(240, 120, 125, 0.13)",
+  dangerStrong: "#43222A",
+  onDanger: "#FBD3D6",
   pin: "#E5B45C",
 
   shadow: "#000000",
@@ -93,6 +108,8 @@ export const lightPalette: Palette = {
   successSubtle: "rgba(28, 154, 106, 0.10)",
   danger: "#D23A44",
   dangerSubtle: "rgba(210, 58, 68, 0.09)",
+  dangerStrong: "#C43642",
+  onDanger: "#FFFFFF",
   pin: "#C1881A",
 
   shadow: "#1A1A2E",

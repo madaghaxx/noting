@@ -43,8 +43,9 @@ test("nothing happens to the lock while authenticating", () => {
 });
 
 test("authenticating takes priority even when the app is unlocked", () => {
-  // Re-authenticating from inside the app — a passcode change, say — must not be
-  // interrupted either.
+  // Not reachable today, since authentication only ever starts from the locked
+  // screen. Asserted anyway because it fixes the precedence: the guard is about
+  // authentication being in flight, not about which side of the lock it started on.
   assert.equal(
     decideForAppState("background", { isUnlocked: true, isAuthenticating: true }),
     "ignore",

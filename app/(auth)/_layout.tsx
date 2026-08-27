@@ -1,5 +1,6 @@
 import { Stack } from "expo-router";
 
+import { LATERAL } from "@/src/navigation/transitions";
 import { useTheme } from "@/src/theme";
 
 export default function AuthLayout() {
@@ -9,7 +10,7 @@ export default function AuthLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        animation: "fade",
+        ...LATERAL,
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     />

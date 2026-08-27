@@ -1,9 +1,12 @@
 import { View } from "react-native";
 import { Stack } from "expo-router";
 
+import ConfirmDialog from "@/src/components/ConfirmDialog";
 import PrivacyShield from "@/src/components/PrivacyShield";
 import { useAppLock } from "@/src/hooks/use-app-lock";
+import { LATERAL } from "@/src/navigation/transitions";
 import { useAuthStore } from "@/src/store/auth-store";
+import { useConfirmStore } from "@/src/store/confirm-store";
 import { ThemeProvider, useTheme } from "@/src/theme";
 
 /**
@@ -14,6 +17,9 @@ function RootNavigator() {
   const theme = useTheme();
   const isUnlocked = useAuthStore((state) => state.isUnlocked);
 
+  const confirmRequest = useConfirmStore((state) => state.request);
+  const dismissConfirm = useConfirmStore((state) => state.dismiss);
+
   // Owns relocking: mounted above the guard, so the listener survives every
   // navigation and both halves of the app.
   const shielded = useAppLock();
@@ -23,9 +29,8 @@ function RootNavigator() {
       <Stack
         screenOptions={{
           headerShown: false,
-          // Locking and unlocking are not pushes. A crossfade suits a state
-          // change; a slide would imply somewhere to go back to.
-          animation: "fade",
+          // Locking and unlocking are not pushes. See `navigation/transitions`.
+          ...LATERAL,
           // Without an explicit background the navigator paints its default white
           // behind screens, which flashes on every transition in dark mode.
           contentStyle: { backgroundColor: theme.colors.background },
@@ -40,8 +45,12 @@ function RootNavigator() {
         </Stack.Protected>
       </Stack>
 
+      {/* Above the navigator so one dialog serves every screen, and so it cannot
+          be clipped by the sidebar or a screen mid-transition. */}
+      <ConfirmDialog request={confirmRequest} onDismiss={dismissConfirm} />
+
       {/* Outside the navigator, so it covers whatever is on screen — including a
-          screen mid-transition. */}
+          screen mid-transition, and including an open dialog. */}
       <PrivacyShield visible={shielded} />
     </View>
   );

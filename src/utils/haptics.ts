@@ -18,8 +18,6 @@ const PATTERNS = {
   detent: 10,
   /** Something was destroyed or moved out of the list. */
   commit: 18,
-  /** Two beats: an action was refused. */
-  reject: [0, 14, 60, 14],
 } as const;
 
 function fire(pattern: number | readonly number[]) {
@@ -38,5 +36,4 @@ function fire(pattern: number | readonly number[]) {
 export const haptics = {
   detent: () => fire(PATTERNS.detent),
   commit: () => fire(PATTERNS.commit),
-  reject: () => fire(PATTERNS.reject),
 };

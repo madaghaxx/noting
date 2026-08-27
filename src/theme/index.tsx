@@ -95,17 +95,5 @@ export function useTheme(): Theme {
   return theme;
 }
 
-/**
- * Builds themed styles once per theme rather than once per render.
- *
- * Define the factory at module scope — an inline arrow is a new function on
- * every render and would defeat the memo.
- */
-export function useThemedStyles<T>(factory: (theme: Theme) => T): T {
-  const theme = useTheme();
-
-  return useMemo(() => factory(theme), [factory, theme]);
-}
-
 export { motion, radius, spacing, springs, typography, TOUCH_TARGET };
 export type { Palette };

@@ -4,6 +4,8 @@ import {
   Pressable,
   StyleSheet,
   View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
   type ViewStyle,
 } from "react-native";
 
@@ -14,12 +16,14 @@ type Props = {
   children: ReactNode;
   onPress?: () => void;
   onLongPress?: () => void;
-  /** Sits on another surface rather than on the background. */
-  raised?: boolean;
+  /** Fires when the finger comes off, including when the press is cancelled. */
+  onPressOut?: () => void;
   padded?: boolean;
   style?: ViewStyle;
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  accessibilityActions?: readonly AccessibilityActionInfo[];
+  onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
 };
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -32,11 +36,13 @@ export default function Card({
   children,
   onPress,
   onLongPress,
-  raised = false,
+  onPressOut,
   padded = true,
   style,
   accessibilityLabel,
   accessibilityHint,
+  accessibilityActions,
+  onAccessibilityAction,
 }: Props) {
   const theme = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
@@ -53,7 +59,7 @@ export default function Card({
   );
 
   const surface: ViewStyle = {
-    backgroundColor: raised ? theme.colors.surfaceRaised : theme.colors.surface,
+    backgroundColor: theme.colors.surface,
     borderColor: theme.colors.border,
     borderRadius: theme.radius.xl,
     padding: padded ? theme.spacing.lg : 0,
@@ -72,10 +78,17 @@ export default function Card({
       onPress={onPress}
       onLongPress={onLongPress}
       onPressIn={() => animate(0.985, theme.springs.press)}
-      onPressOut={() => animate(1, theme.springs.settle)}
+      onPressOut={() => {
+        animate(1, theme.springs.settle);
+        onPressOut?.();
+      }}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
+      accessibilityActions={
+        accessibilityActions as AccessibilityActionInfo[] | undefined
+      }
+      onAccessibilityAction={onAccessibilityAction}
       style={[
         styles.base,
         surface,

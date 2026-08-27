@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,6 +23,7 @@ import {
   toggleLinePrefix,
   type Selection,
 } from "@/src/markdown/edit";
+import { confirm } from "@/src/store/confirm-store";
 import { useNotesStore } from "@/src/store/notes-store";
 import { useTheme } from "@/src/theme";
 import { TOUCH_TARGET } from "@/src/theme/tokens";
@@ -137,21 +137,19 @@ export default function NoteEditorScreen() {
         return;
       }
 
-      Alert.alert(
-        "Empty note",
-        "A note needs a title or some text. Delete it instead?",
-        [
-          { text: "Keep editing", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              await remove(id);
-              close();
-            },
-          },
-        ],
-      );
+      const agreed = await confirm({
+        title: "Empty note",
+        message: "A note needs a title or some text. Delete it instead?",
+        confirmLabel: "Delete",
+        cancelLabel: "Keep editing",
+        icon: "trash",
+      });
+
+      if (agreed) {
+        await remove(id);
+        close();
+      }
+
       return;
     }
 
@@ -167,34 +165,36 @@ export default function NoteEditorScreen() {
     close();
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (!isDirty) {
       close();
       return;
     }
 
-    Alert.alert("Discard changes?", "Your edits to this note will be lost.", [
-      { text: "Keep editing", style: "cancel" },
-      { text: "Discard", style: "destructive", onPress: close },
-    ]);
+    const agreed = await confirm({
+      title: "Discard changes?",
+      message: "Your edits to this note will be lost.",
+      confirmLabel: "Discard",
+      cancelLabel: "Keep editing",
+      icon: "close",
+    });
+
+    if (agreed) close();
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      "Move to Recently Deleted?",
-      "The note will be kept in Recently Deleted until you remove it.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await remove(id);
-            close();
-          },
-        },
-      ],
-    );
+  const handleDelete = async () => {
+    const agreed = await confirm({
+      title: "Move to Recently Deleted?",
+      message:
+        "The note will be kept in Recently Deleted until you remove it.",
+      confirmLabel: "Delete",
+      icon: "trash",
+    });
+
+    if (!agreed) return;
+
+    await remove(id);
+    close();
   };
 
   if (isMissing) {
@@ -246,15 +246,24 @@ export default function NoteEditorScreen() {
           />
         </Pressable>
 
-        {/* One control, two states, in the same place — so the toggle reads as a
-            switch rather than as two different buttons appearing. */}
+        {/* One control, two states, in the same place — so it reads as a switch
+            rather than as two different buttons appearing.
+
+            Deliberately a filled pill with an icon and a word, not the quiet text
+            label it started as: previewing is the point of writing Markdown, and a
+            caption that only looked like a status made the feature easy to miss. */}
         {hasBody || !isNew ? (
           <Pressable
             onPress={() => setReading((value) => !value)}
             accessibilityRole="switch"
             accessibilityState={{ checked: reading }}
             accessibilityLabel={
-              reading ? "Edit this note" : "Preview formatting"
+              reading ? "Edit this note" : "View formatted Markdown"
+            }
+            accessibilityHint={
+              reading
+                ? "Switches back to the editor."
+                : "Shows the note as it will be read."
             }
             style={({ pressed }) => ({
               flexDirection: "row",
@@ -262,14 +271,24 @@ export default function NoteEditorScreen() {
               gap: theme.spacing.xs,
               minHeight: TOUCH_TARGET - theme.spacing.md,
               paddingHorizontal: theme.spacing.md,
-              borderRadius: theme.radius.md,
+              borderRadius: theme.radius.full,
+              borderWidth: StyleSheet.hairlineWidth,
+              borderColor: reading ? "transparent" : theme.colors.border,
               backgroundColor: pressed
                 ? theme.colors.surfacePressed
-                : "transparent",
+                : reading
+                  ? theme.colors.accentSubtle
+                  : theme.colors.surface,
             })}
           >
-            <AppText variant="caption" tone={reading ? "accent" : "tertiary"}>
-              {reading ? "Reading" : "Writing"}
+            <Icon
+              name={reading ? "eyeOff" : "eye"}
+              size={15}
+              color={reading ? theme.colors.accent : theme.colors.textSecondary}
+            />
+
+            <AppText variant="caption" tone={reading ? "accent" : "secondary"}>
+              {reading ? "Edit" : "View"}
             </AppText>
           </Pressable>
         ) : (

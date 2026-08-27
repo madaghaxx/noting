@@ -16,18 +16,12 @@ import {
 test("the sidebar offers every required destination, in order", () => {
   assert.deepEqual(
     DESTINATIONS.map((destination) => destination.key),
-    ["all", "pinned", "trash", "images", "settings"],
+    ["all", "pinned", "trash", "images"],
   );
 
   assert.deepEqual(
     DESTINATIONS.map((destination) => destination.label),
-    [
-      "All Notes",
-      "Pinned",
-      "Recently Deleted",
-      "Favorite Images",
-      "Settings",
-    ],
+    ["All Notes", "Pinned", "Recently Deleted", "Favorite Images"],
   );
 });
 
@@ -53,15 +47,8 @@ test("every destination has an icon, and only counted ones have a badge", () => 
     }
   }
 
-  // Images has nothing to count yet, and Settings is not a collection.
-  assert.equal(
-    DESTINATIONS.find((d) => d.key === "images").badge,
-    undefined,
-  );
-  assert.equal(
-    DESTINATIONS.find((d) => d.key === "settings").badge,
-    undefined,
-  );
+  // Images has nothing to count yet.
+  assert.equal(DESTINATIONS.find((d) => d.key === "images").badge, undefined);
 });
 
 test("the highlighted row follows the route on screen", () => {
@@ -69,7 +56,6 @@ test("the highlighted row follows the route on screen", () => {
   assert.equal(activeDestination("/pinned"), "pinned");
   assert.equal(activeDestination("/trash"), "trash");
   assert.equal(activeDestination("/images"), "images");
-  assert.equal(activeDestination("/settings"), "settings");
 });
 
 test("the editor keeps the notes row highlighted", () => {

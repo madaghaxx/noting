@@ -1,30 +1,57 @@
 import { memo, useEffect, useRef } from "react";
 import { Animated, Easing, Pressable, View } from "react-native";
 
-import Card from "@/src/components/ui/Card";
+import HighlightedText from "@/src/components/HighlightedText";
 import AppText from "@/src/components/ui/AppText";
+import Card from "@/src/components/ui/Card";
 import Icon from "@/src/components/ui/Icon";
 import { toPlainText } from "@/src/markdown/plain";
 import { useTheme } from "@/src/theme";
 import { motion, TOUCH_TARGET } from "@/src/theme/tokens";
 import type { Note } from "@/src/types/note";
 import { formatRelativeTime } from "@/src/utils/format";
+import { previewAround } from "@/src/utils/search";
 
 type Props = {
   note: Note;
-  /** Plays the removal animation; the row is dropped from state once it ends. */
-  exiting?: boolean;
+  /**
+   * The note's body with Markdown stripped.
+   *
+   * Passed in when the caller already has it — the notes list strips every note
+   * once to search over, and stripping it again per row would parse the whole
+   * notebook twice on every keystroke.
+   */
+  preview?: string;
+  /** Emphasised in the title and preview, and used to keep a late match visible. */
+  query?: string;
+  /** True while this card is being dragged, so it can read as picked up. */
+  lifted?: boolean;
   onPress: (note: Note) => void;
   onTogglePin: (note: Note) => void;
-  onLongPress: (note: Note) => void;
+  /** Picks the card up to reorder it. Omitted where reordering is meaningless. */
+  onLift?: (note: Note) => void;
+  /**
+   * Moves the note one place within its section.
+   *
+   * The keyboard-and-screen-reader equivalent of the drag: a long press and a pan
+   * are unavailable to someone using TalkBack or VoiceOver, and reordering is not
+   * a feature they should simply be locked out of.
+   */
+  onMove?: (note: Note, direction: -1 | 1) => void;
+  /** The finger came off the card, whether or not a drag happened. */
+  onRelease?: () => void;
 };
 
 function NoteCard({
   note,
-  exiting = false,
+  preview: providedPreview,
+  query = "",
+  lifted = false,
   onPress,
   onTogglePin,
-  onLongPress,
+  onLift,
+  onMove,
+  onRelease,
 }: Props) {
   const theme = useTheme();
   const presence = useRef(new Animated.Value(0)).current;
@@ -33,12 +60,12 @@ function NoteCard({
 
   useEffect(() => {
     Animated.timing(presence, {
-      toValue: exiting ? 0 : 1,
-      duration: exiting ? 180 : motion.fast,
-      easing: exiting ? Easing.in(Easing.quad) : Easing.out(Easing.quad),
+      toValue: 1,
+      duration: motion.fast,
+      easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start();
-  }, [exiting, presence]);
+  }, [presence]);
 
   /**
    * Pinning moves the row to the other section, so the pin itself needs to
@@ -70,8 +97,14 @@ function NoteCard({
 
   // Through the Markdown parser rather than a regex: what the card shows is then
   // exactly the words the rendered note shows, minus the syntax.
-  const preview = toPlainText(note.content);
+  const plain = providedPreview ?? toPlainText(note.content);
+
+  // A match late in a long note would otherwise sit past the end of the preview,
+  // making the row look like a false positive.
+  const preview = previewAround(plain, query);
   const hasTitle = note.title.length > 0;
+
+  const name = hasTitle ? note.title : "Untitled note";
 
   return (
     <Animated.View
@@ -89,11 +122,39 @@ function NoteCard({
     >
       <Card
         onPress={() => onPress(note)}
-        onLongPress={() => onLongPress(note)}
-        accessibilityLabel={hasTitle ? note.title : "Untitled note"}
-        accessibilityHint="Opens the note. Long press to delete."
+        onLongPress={onLift ? () => onLift(note) : undefined}
+        onPressOut={onRelease}
+        accessibilityLabel={name}
+        accessibilityHint={
+          onLift
+            ? "Opens the note. Long press to pick it up and reorder."
+            : "Opens the note."
+        }
+        accessibilityActions={
+          onMove
+            ? [
+                { name: "moveUp", label: "Move up" },
+                { name: "moveDown", label: "Move down" },
+              ]
+            : undefined
+        }
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === "moveUp") onMove?.(note, -1);
+          if (event.nativeEvent.actionName === "moveDown") onMove?.(note, 1);
+        }}
         padded={false}
-        style={{ flexDirection: "row", alignItems: "flex-start" }}
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          // Picked up: brighter surface and a real shadow, so it reads as being
+          // held above the list rather than as a selected row.
+          ...(lifted
+            ? {
+                backgroundColor: theme.colors.surfaceRaised,
+                borderColor: theme.colors.borderStrong,
+              }
+            : null),
+        }}
       >
         <View
           style={{
@@ -103,18 +164,22 @@ function NoteCard({
             gap: theme.spacing.xs,
           }}
         >
-          <AppText
+          <HighlightedText
+            text={hasTitle ? note.title : "Untitled"}
+            query={hasTitle ? query : ""}
             variant="subtitle"
             tone={hasTitle ? "primary" : "tertiary"}
             numberOfLines={1}
-          >
-            {hasTitle ? note.title : "Untitled"}
-          </AppText>
+          />
 
           {preview.length > 0 && (
-            <AppText variant="body" tone="secondary" numberOfLines={2}>
-              {preview}
-            </AppText>
+            <HighlightedText
+              text={preview}
+              query={query}
+              variant="body"
+              tone="secondary"
+              numberOfLines={2}
+            />
           )}
 
           <AppText

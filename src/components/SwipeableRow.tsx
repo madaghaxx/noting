@@ -10,7 +10,7 @@ import {
 } from "react-native";
 
 import AppText from "@/src/components/ui/AppText";
-import Icon, { type IconName } from "@/src/components/ui/Icon";
+import Icon from "@/src/components/ui/Icon";
 import { useTheme } from "@/src/theme";
 import { motion } from "@/src/theme/tokens";
 import { haptics } from "@/src/utils/haptics";
@@ -20,9 +20,7 @@ type Props = {
   /** Runs once the swipe has committed and the row has left the screen. */
   onAction: () => void;
   label: string;
-  icon?: IconName;
-  /** Rounded to match the card it wraps, so the panel behind lines up. */
-  radius?: number;
+  /** Set false to hand the gesture back to whatever else wants it. */
   enabled?: boolean;
   /**
    * `commit` lets a long swipe act on release — right for a reversible action.
@@ -69,8 +67,6 @@ export default function SwipeableRow({
   children,
   onAction,
   label,
-  icon = "trash",
-  radius,
   enabled = true,
   mode = "commit",
 }: Props) {
@@ -85,7 +81,15 @@ export default function SwipeableRow({
   const [armed, setArmed] = useState(false);
   const armedRef = useRef(false);
 
-  const corner = radius ?? theme.radius.xl;
+  /**
+   * The responder is built once, on mount, so anything it reads has to be read
+   * through a ref — a prop captured directly would be frozen at whatever it was
+   * on first render, and `onAction` in particular is a fresh closure every time
+   * the list re-renders.
+   */
+  const latest = useRef({ onAction, enabled, screenWidth });
+
+  latest.current = { onAction, enabled, screenWidth };
 
   const settle = useCallback(
     (toValue: number) => {
@@ -118,14 +122,14 @@ export default function SwipeableRow({
     // Off the screen first, then out of the list: removing the note while the row
     // is still visible would make it blink out mid-gesture.
     Animated.timing(translateX, {
-      toValue: -screenWidth,
+      toValue: -latest.current.screenWidth,
       duration: motion.fast,
       easing: Easing.out(Easing.quad),
       useNativeDriver: true,
     }).start(({ finished }) => {
-      if (finished) onAction();
+      if (finished) latest.current.onAction();
     });
-  }, [closeRow, onAction, screenWidth, translateX]);
+  }, [closeRow, translateX]);
 
   // A row that unmounts while open must not leave a dangling closer behind.
   useEffect(
@@ -138,7 +142,7 @@ export default function SwipeableRow({
   const responder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_event, gesture) => {
-        if (!enabled) return false;
+        if (!latest.current.enabled) return false;
 
         // Horizontal intent only, and only in the direction that makes sense from
         // where the row currently rests. Anything else belongs to the list.
@@ -205,14 +209,19 @@ export default function SwipeableRow({
 
   return (
     <View>
-      {/* The action panel sits behind the row, revealed rather than moved. */}
+      {/* The action panel sits behind the row, revealed rather than moved.
+
+          Armed, it deepens rather than lighting up: a saturated red filling the
+          whole row would be the brightest thing in the app, and this is a
+          notebook read in the dark. The step from tint to `dangerStrong` is
+          unmistakable without being a flashbulb. */}
       <View
         style={[
           StyleSheet.absoluteFill,
           {
-            borderRadius: corner,
+            borderRadius: theme.radius.xl,
             backgroundColor: armed
-              ? theme.colors.danger
+              ? theme.colors.dangerStrong
               : theme.colors.dangerSubtle,
             alignItems: "flex-end",
             justifyContent: "center",
@@ -232,15 +241,15 @@ export default function SwipeableRow({
           }}
         >
           <Icon
-            name={icon}
+            name="trash"
             size={21}
-            color={armed ? theme.colors.onAccent : theme.colors.danger}
+            color={armed ? theme.colors.onDanger : theme.colors.danger}
           />
 
           <AppText
             variant="caption"
             style={{
-              color: armed ? theme.colors.onAccent : theme.colors.danger,
+              color: armed ? theme.colors.onDanger : theme.colors.danger,
             }}
           >
             {label}

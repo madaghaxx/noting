@@ -45,13 +45,3 @@ export type NoteDraft = {
   title: string;
   content: string;
 };
-
-/**
- * Which half of the list a note belongs to. Pinned notes always sort above
- * unpinned ones, and reordering is only ever valid within one section.
- */
-export type NoteSection = "pinned" | "unpinned";
-
-export function sectionOf(note: Note): NoteSection {
-  return note.isPinned ? "pinned" : "unpinned";
-}

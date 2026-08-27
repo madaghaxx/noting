@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Animated, FlatList, Pressable, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Animated, BackHandler, Pressable, View } from "react-native";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import NoteCard from "@/src/components/NoteCard";
+import ErrorBanner from "@/src/components/ErrorBanner";
+import NoteList, { type NoteRow } from "@/src/components/NoteList";
 import ScreenHeader from "@/src/components/ScreenHeader";
-import SwipeableRow from "@/src/components/SwipeableRow";
+import SearchField from "@/src/components/SearchField";
 import UndoToast from "@/src/components/UndoToast";
 import AppText from "@/src/components/ui/AppText";
 import Icon from "@/src/components/ui/Icon";
@@ -13,6 +14,7 @@ import Screen from "@/src/components/ui/Screen";
 import Spinner from "@/src/components/ui/Spinner";
 import StateView from "@/src/components/ui/StateView";
 import { useStaggeredEntrance } from "@/src/hooks/use-entrance";
+import { toPlainText } from "@/src/markdown/plain";
 import { lockEverything } from "@/src/store/lock";
 import { useNotesStore } from "@/src/store/notes-store";
 import { useSidebarStore } from "@/src/store/sidebar-store";
@@ -20,9 +22,7 @@ import { useTheme, type Theme } from "@/src/theme";
 import { TOUCH_TARGET, type SpringConfig } from "@/src/theme/tokens";
 import type { Note } from "@/src/types/note";
 import { greeting } from "@/src/utils/format";
-
-/** How long the card's exit animation needs before the row can leave the list. */
-const EXIT_DURATION = 190;
+import { filterNotes } from "@/src/utils/search";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -93,11 +93,17 @@ export default function NotesScreen({ onlyPinned = false }: Props) {
   const load = useNotesStore((state) => state.load);
   const remove = useNotesStore((state) => state.remove);
   const togglePin = useNotesStore((state) => state.togglePin);
+  const reorder = useNotesStore((state) => state.reorder);
   const clearError = useNotesStore((state) => state.clearError);
+
+  // Lives in the store rather than in this component: it is shared by two routes,
+  // and it has to be cleared on lock along with everything else about the notes.
+  const query = useNotesStore((state) => state.query);
+  const setQuery = useNotesStore((state) => state.setQuery);
 
   const openSidebar = useSidebarStore((state) => state.open);
 
-  const [exitingId, setExitingId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const entrance = useStaggeredEntrance(2);
 
   // The guard unmounts this group on lock, so this runs again on every unlock —
@@ -105,6 +111,30 @@ export default function NotesScreen({ onlyPinned = false }: Props) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Switching between All Notes and Pinned starts a fresh question. Carrying a
+  // term across would make the other list look mysteriously short.
+  useEffect(() => {
+    setSearchOpen(false);
+    setQuery("");
+  }, [onlyPinned, setQuery]);
+
+  // Back closes the search rather than leaving the notebook: the field is a mode
+  // within this screen, and backing out of a mode is what Back means here.
+  useEffect(() => {
+    if (!searchOpen) return;
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        setQuery("");
+        setSearchOpen(false);
+        return true;
+      },
+    );
+
+    return () => subscription.remove();
+  }, [searchOpen, setQuery]);
 
   const handleOpen = useCallback((note: Note) => {
     router.push({ pathname: "/note/[id]", params: { id: note.id } });
@@ -118,132 +148,140 @@ export default function NotesScreen({ onlyPinned = false }: Props) {
   /**
    * The swipe has already committed by the time this runs — it is a deliberate,
    * armed gesture, and the note is recoverable from Recently Deleted either way,
-   * so interrupting it with a dialog would be the wrong kind of caution.
+   * so interrupting it with a dialog would be the wrong kind of caution. The undo
+   * toast is what covers the mistake.
    */
-  const handleSwipeDelete = useCallback(
+  const handleDelete = useCallback(
     (note: Note) => remove(note.id),
     [remove],
   );
 
-  /**
-   * Long press is the same destination by a less deliberate route — and the only
-   * one available to a screen reader, which cannot swipe. That asymmetry is why
-   * this one asks first.
-   */
-  const handleLongPress = useCallback(
-    (note: Note) => {
-      const label = note.title.trim();
-
-      Alert.alert(
-        "Move to Recently Deleted?",
-        label
-          ? `“${label}” will be kept in Recently Deleted until you remove it.`
-          : "This note will be kept in Recently Deleted until you remove it.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: () => {
-              // Mark it exiting, then drop it once the animation has played.
-              // Removing immediately would make the row vanish mid-fade.
-              setExitingId(note.id);
-
-              setTimeout(() => {
-                remove(note.id);
-                setExitingId(null);
-              }, EXIT_DURATION);
-            },
-          },
-        ],
-      );
-    },
-    [remove],
+  const handleReorder = useCallback(
+    (from: number, to: number) => reorder(from, to),
+    [reorder],
   );
 
   const handleLock = useCallback(() => lockEverything(), []);
 
   const pinnedCount = notes.filter((note) => note.isPinned).length;
-  const visible = onlyPinned ? notes.filter((note) => note.isPinned) : notes;
 
-  const subtitle = onlyPinned
-    ? pinnedCount === 0
-      ? "Nothing pinned"
-      : `${pinnedCount} ${pinnedCount === 1 ? "note" : "notes"} kept on top`
-    : notes.length === 0
-      ? "Nothing written yet"
-      : [
-          `${notes.length} ${notes.length === 1 ? "note" : "notes"}`,
-          pinnedCount > 0 ? `${pinnedCount} pinned` : null,
-        ]
-          .filter(Boolean)
-          .join("  ·  ");
+  /**
+   * Every note with its Markdown stripped, rebuilt only when the notes change.
+   *
+   * Search runs over this rather than over the raw body, so it finds what the list
+   * *shows*: a note written as `b**old**` should answer to "bold", and should not
+   * answer to "b**old**". Doing it here also means the whole notebook is parsed
+   * once per change rather than once per row per keystroke.
+   */
+  const rows = useMemo<NoteRow[]>(
+    () =>
+      notes.map((note) => ({
+        note,
+        title: note.title,
+        content: toPlainText(note.content),
+      })),
+    [notes],
+  );
+
+  const visible = useMemo(() => {
+    const scoped = onlyPinned ? rows.filter((row) => row.note.isPinned) : rows;
+
+    return filterNotes(scoped, query);
+  }, [rows, onlyPinned, query]);
+
+  const searching = query.trim().length > 0;
+  const scopedTotal = onlyPinned ? pinnedCount : notes.length;
+
+  const subtitle = searching
+    ? `${visible.length} of ${scopedTotal} ${scopedTotal === 1 ? "note" : "notes"}`
+    : onlyPinned
+      ? pinnedCount === 0
+        ? "Nothing pinned"
+        : `${pinnedCount} ${pinnedCount === 1 ? "note" : "notes"} kept on top`
+      : notes.length === 0
+        ? "Nothing written yet"
+        : [
+            `${notes.length} ${notes.length === 1 ? "note" : "notes"}`,
+            pinnedCount > 0 ? `${pinnedCount} pinned` : null,
+          ]
+            .filter(Boolean)
+            .join("  ·  ");
 
   const isFirstLoad = status === "loading" && notes.length === 0;
   const failedOutright = status === "error" && notes.length === 0;
 
+  const closeSearch = useCallback(() => {
+    setQuery("");
+    setSearchOpen(false);
+  }, [setQuery]);
+
   return (
     <Screen>
       <Animated.View style={entrance[0]}>
-        <ScreenHeader
-          title={onlyPinned ? "Pinned" : greeting()}
-          subtitle={subtitle}
-          leading={{
-            icon: "menu",
-            onPress: openSidebar,
-            label: "Open navigation",
-          }}
-        >
-          <Pressable
-            onPress={handleLock}
-            hitSlop={theme.spacing.sm}
-            accessibilityRole="button"
-            accessibilityLabel="Lock Noting"
-            style={{
-              width: TOUCH_TARGET,
-              height: TOUCH_TARGET,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: theme.radius.full,
-              backgroundColor: theme.colors.surface,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-            }}
+        {searchOpen ? (
+          <SearchField
+            value={query}
+            onChange={setQuery}
+            onClose={closeSearch}
+            placeholder={onlyPinned ? "Search pinned notes" : "Search notes"}
+            resultLabel={searching ? subtitle : undefined}
+          />
+        ) : (
+          <ScreenHeader
+            title={onlyPinned ? "Pinned" : greeting()}
+            subtitle={subtitle}
+            leading={{ onPress: openSidebar, label: "Open navigation" }}
           >
-            <Icon name="lock" size={19} color={theme.colors.textSecondary} />
-          </Pressable>
-        </ScreenHeader>
+            {/* Hidden when there is nothing to search: an empty notebook does not
+                need a magnifying glass. */}
+            {scopedTotal > 0 && (
+              <Pressable
+                onPress={() => setSearchOpen(true)}
+                hitSlop={theme.spacing.sm}
+                accessibilityRole="button"
+                accessibilityLabel="Search notes"
+                style={{
+                  width: TOUCH_TARGET,
+                  height: TOUCH_TARGET,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: theme.radius.full,
+                }}
+              >
+                <Icon
+                  name="search"
+                  size={19}
+                  color={theme.colors.textSecondary}
+                />
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={handleLock}
+              hitSlop={theme.spacing.sm}
+              accessibilityRole="button"
+              accessibilityLabel="Lock Noting"
+              style={{
+                width: TOUCH_TARGET,
+                height: TOUCH_TARGET,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: theme.radius.full,
+                backgroundColor: theme.colors.surface,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+              }}
+            >
+              <Icon name="lock" size={19} color={theme.colors.textSecondary} />
+            </Pressable>
+          </ScreenHeader>
+        )}
       </Animated.View>
 
       {/* A write failed while notes are still on screen. Surfaced without
           discarding the list the user can still read. */}
       {error && notes.length > 0 && (
-        <Pressable
-          onPress={clearError}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss error"
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: theme.spacing.md,
-            marginHorizontal: theme.spacing.xl,
-            marginBottom: theme.spacing.md,
-            padding: theme.spacing.md,
-            borderRadius: theme.radius.lg,
-            backgroundColor: theme.colors.dangerSubtle,
-          }}
-        >
-          <Icon name="alert" size={18} color={theme.colors.danger} />
-
-          <AppText
-            variant="caption"
-            tone="danger"
-            numberOfLines={2}
-            style={{ flex: 1 }}
-          >
-            {error}
-          </AppText>
-        </Pressable>
+        <ErrorBanner message={error} onDismiss={clearError} />
       )}
 
       <Animated.View style={[entrance[1], { flex: 1 }]}>
@@ -262,7 +300,14 @@ export default function NotesScreen({ onlyPinned = false }: Props) {
             action={{ label: "Try again", onPress: load }}
           />
         ) : visible.length === 0 ? (
-          onlyPinned ? (
+          searching ? (
+            <StateView
+              icon="search"
+              title="No notes match"
+              body={`Nothing here contains “${query.trim()}”.`}
+              action={{ label: "Clear search", onPress: () => setQuery("") }}
+            />
+          ) : onlyPinned ? (
             <StateView
               icon="pin"
               title="Nothing pinned yet"
@@ -280,40 +325,26 @@ export default function NotesScreen({ onlyPinned = false }: Props) {
             />
           )
         ) : (
-          <FlatList
-            data={visible}
-            keyExtractor={(note) => note.id}
-            renderItem={({ item }) => (
-              <SwipeableRow
-                label="Delete"
-                onAction={() => handleSwipeDelete(item)}
-              >
-                <NoteCard
-                  note={item}
-                  exiting={item.id === exitingId}
-                  onPress={handleOpen}
-                  onTogglePin={handleTogglePin}
-                  onLongPress={handleLongPress}
-                />
-              </SwipeableRow>
-            )}
-            ItemSeparatorComponent={() => (
-              <View style={{ height: theme.spacing.md }} />
-            )}
-            contentContainerStyle={{
-              paddingHorizontal: theme.spacing.xl,
-              paddingTop: theme.spacing.xs,
-              // Clears the New note button so the last card stays reachable.
-              paddingBottom: theme.spacing.huge + theme.spacing.xxl,
-            }}
-            showsVerticalScrollIndicator={false}
+          <NoteList
+            rows={visible}
+            query={query}
+            // A filtered list's indices are not the notebook's, so there is
+            // nothing coherent for a drop to mean while searching.
+            reorderable={!searching}
+            onOpen={handleOpen}
+            onTogglePin={handleTogglePin}
+            onDelete={handleDelete}
+            onReorder={handleReorder}
+            // Clears the New note button so the last card stays reachable.
+            paddingBottom={theme.spacing.huge + theme.spacing.xxl}
           />
         )}
       </Animated.View>
 
       {/* Creating from the Pinned list would drop the new note into a list it is
-          not part of, so the action lives where its result is visible. */}
-      {!onlyPinned && (
+          not part of, so the action lives where its result is visible. And while
+          searching, the keyboard is where the button would be. */}
+      {!onlyPinned && !searchOpen && (
         <NewNoteButton
           theme={theme}
           onPress={() =>

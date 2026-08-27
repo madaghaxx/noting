@@ -67,6 +67,23 @@ function compareDeleted(a: Note, b: Note): number {
 }
 
 /**
+ * Which unlocked session the store's contents belong to.
+ *
+ * Every read and write here awaits SQLite, and locking can land inside that
+ * await. `reset()` emptying the arrays is not enough on its own: the query it
+ * interrupted still resolves afterwards, and its `set` would put note bodies
+ * back into the store — in memory, behind the unlock screen, with nothing on
+ * screen looking wrong. So each operation captures the session it started in and
+ * drops its result if the app locked meanwhile.
+ */
+let session = 0;
+
+/** True while the app has not locked since `startedIn`. */
+function current(startedIn: number): boolean {
+  return startedIn === session;
+}
+
+/**
  * Owns the in-memory view of the notes table.
  *
  * Mutations are optimistic: state changes first so the UI answers the gesture
@@ -82,13 +99,16 @@ export const useNotesStore = create<NotesState>((set, get) => ({
   pendingDeletion: null,
 
   load: async () => {
+    const startedIn = session;
+
     set({ status: "loading", error: null });
 
     try {
       const notes = await repository.listNotes();
-      set({ notes, status: "ready" });
+
+      if (current(startedIn)) set({ notes, status: "ready" });
     } catch (error) {
-      set({ status: "error", error: describe(error) });
+      if (current(startedIn)) set({ status: "error", error: describe(error) });
     }
   },
 
@@ -98,16 +118,24 @@ export const useNotesStore = create<NotesState>((set, get) => ({
    * eagerly would keep deleted note bodies in memory for no reason.
    */
   loadDeleted: async () => {
+    const startedIn = session;
+
     try {
-      set({ deleted: await repository.listDeletedNotes(), error: null });
+      const deleted = await repository.listDeletedNotes();
+
+      if (current(startedIn)) set({ deleted, error: null });
     } catch (error) {
-      set({ error: describe(error) });
+      if (current(startedIn)) set({ error: describe(error) });
     }
   },
 
   create: async (draft) => {
+    const startedIn = session;
+
     try {
       const note = await repository.createNote(draft);
+
+      if (!current(startedIn)) return null;
 
       set((state) => ({
         notes: [...state.notes, note].sort(compareNotes),
@@ -116,14 +144,18 @@ export const useNotesStore = create<NotesState>((set, get) => ({
 
       return note;
     } catch (error) {
-      set({ error: describe(error) });
+      if (current(startedIn)) set({ error: describe(error) });
       return null;
     }
   },
 
   update: async (id, draft) => {
+    const startedIn = session;
+
     try {
       const updatedAt = await repository.updateNote(id, draft);
+
+      if (!current(startedIn)) return;
 
       set((state) => ({
         notes: state.notes.map((note) =>
@@ -139,7 +171,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         error: null,
       }));
     } catch (error) {
-      set({ error: describe(error) });
+      if (current(startedIn)) set({ error: describe(error) });
     }
   },
 
@@ -152,6 +184,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
    * deleted, and an app killed mid-undo-window loses nothing.
    */
   remove: async (id) => {
+    const startedIn = session;
     const previousNotes = get().notes;
     const previousDeleted = get().deleted;
     const index = previousNotes.findIndex((note) => note.id === id);
@@ -173,6 +206,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     try {
       const written = await repository.softDeleteNote(id);
 
+      if (!current(startedIn)) return;
+
       set((state) => ({
         deleted: state.deleted
           .map((candidate) =>
@@ -183,6 +218,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
           .sort(compareDeleted),
       }));
     } catch (error) {
+      if (!current(startedIn)) return;
+
       set({
         notes: previousNotes,
         deleted: previousDeleted,
@@ -211,6 +248,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
    * exact inverse of deleting — including whether it was pinned.
    */
   restore: async (id) => {
+    const startedIn = session;
     const previousNotes = get().notes;
     const previousDeleted = get().deleted;
     const note = previousDeleted.find((candidate) => candidate.id === id);
@@ -230,6 +268,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     try {
       await repository.restoreDeletedNote(id);
     } catch (error) {
+      if (!current(startedIn)) return;
+
       set({
         notes: previousNotes,
         deleted: previousDeleted,
@@ -246,6 +286,7 @@ export const useNotesStore = create<NotesState>((set, get) => ({
    * note, by any path.
    */
   purge: async (id) => {
+    const startedIn = session;
     const previousDeleted = get().deleted;
 
     if (!previousDeleted.some((note) => note.id === id)) return;
@@ -261,11 +302,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     try {
       await repository.purgeNote(id);
     } catch (error) {
-      set({ deleted: previousDeleted, error: describe(error) });
+      if (current(startedIn)) {
+        set({ deleted: previousDeleted, error: describe(error) });
+      }
     }
   },
 
   purgeAll: async () => {
+    const startedIn = session;
     const previousDeleted = get().deleted;
 
     if (previousDeleted.length === 0) return;
@@ -275,11 +319,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     try {
       await repository.purgeAllDeleted();
     } catch (error) {
-      set({ deleted: previousDeleted, error: describe(error) });
+      if (current(startedIn)) {
+        set({ deleted: previousDeleted, error: describe(error) });
+      }
     }
   },
 
   togglePin: async (id) => {
+    const startedIn = session;
     const previous = get().notes;
     const target = previous.find((note) => note.id === id);
 
@@ -299,11 +346,12 @@ export const useNotesStore = create<NotesState>((set, get) => ({
     try {
       await repository.setPinned(id, isPinned);
     } catch (error) {
-      set({ notes: previous, error: describe(error) });
+      if (current(startedIn)) set({ notes: previous, error: describe(error) });
     }
   },
 
   reorder: async (from, to) => {
+    const startedIn = session;
     const previous = get().notes;
     const moved = previous[from];
     const target = previous[to];
@@ -335,6 +383,8 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         sameSection(reordered[index + 1]),
       );
 
+      if (!current(startedIn)) return;
+
       // Mirror the position that was written. The array is already in the right
       // order, but the moved note still carries its old position — and the next
       // local re-sort (pinning something, say) would order by that stale value
@@ -349,10 +399,13 @@ export const useNotesStore = create<NotesState>((set, get) => ({
         // The gap ran out of float precision. Renumber this section, then
         // re-read so in-memory positions match what is on disk.
         await repository.rebalanceSection(moved.isPinned);
-        set({ notes: await repository.listNotes() });
+
+        const notes = await repository.listNotes();
+
+        if (current(startedIn)) set({ notes });
       }
     } catch (error) {
-      set({ notes: previous, error: describe(error) });
+      if (current(startedIn)) set({ notes: previous, error: describe(error) });
     }
   },
 
@@ -364,8 +417,14 @@ export const useNotesStore = create<NotesState>((set, get) => ({
    * Drops every note from memory. Called on lock so note contents do not sit in
    * the JS heap behind the unlock screen — the trash included, since a deleted
    * note is still the user's writing.
+   *
+   * Bumping the session is what makes that stick: anything already awaiting
+   * SQLite will find its result unwanted and discard it rather than refilling
+   * the store behind the lock screen.
    */
-  reset: () =>
+  reset: () => {
+    session++;
+
     set({
       notes: [],
       deleted: [],
@@ -373,5 +432,6 @@ export const useNotesStore = create<NotesState>((set, get) => ({
       error: null,
       query: "",
       pendingDeletion: null,
-    }),
+    });
+  },
 }));

@@ -189,11 +189,10 @@ function mapError(error: string): AuthOutcome {
 /**
  * Opens the platform's biometric prompt.
  *
- * `disableDeviceFallback: false` leaves the device's own PIN or pattern available
- * inside the system prompt. Noting's passcode is a separate, app-level path — see
- * `passcode-service` — and having both is deliberate: the app one works when
- * biometrics are locked out, and the platform one works when the app's passcode
- * has been forgotten but the phone's has not.
+ * This is the only way into Noting. `disableDeviceFallback: false` matters more
+ * because of that: it leaves the device's own PIN or pattern reachable inside the
+ * system prompt, which is what still opens the notes when the sensor is locked out
+ * or refuses to read. The app holds no credential of its own to fall back to.
  *
  * @param method  Named in the prompt so the sentence matches the sensor the device
  *                is about to use ("Confirm with Face ID").

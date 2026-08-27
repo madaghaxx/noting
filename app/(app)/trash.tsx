@@ -1,21 +1,25 @@
-import { useCallback, useEffect } from "react";
-import { Alert, Animated, FlatList, Pressable, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { Animated, FlatList, View } from "react-native";
 
+import ErrorBanner from "@/src/components/ErrorBanner";
 import ScreenHeader from "@/src/components/ScreenHeader";
 import SwipeableRow from "@/src/components/SwipeableRow";
 import AppText from "@/src/components/ui/AppText";
+import Button from "@/src/components/ui/Button";
 import Card from "@/src/components/ui/Card";
 import Icon from "@/src/components/ui/Icon";
 import Screen from "@/src/components/ui/Screen";
+import Spinner from "@/src/components/ui/Spinner";
 import StateView from "@/src/components/ui/StateView";
 import { useStaggeredEntrance } from "@/src/hooks/use-entrance";
+import { toPlainText } from "@/src/markdown/plain";
+import { confirm } from "@/src/store/confirm-store";
 import { useNotesStore } from "@/src/store/notes-store";
 import { useSidebarStore } from "@/src/store/sidebar-store";
 import { useTheme, type Theme } from "@/src/theme";
 import { TOUCH_TARGET } from "@/src/theme/tokens";
 import type { Note } from "@/src/types/note";
 import { formatRelativeTime } from "@/src/utils/format";
-import { toPlainText } from "@/src/markdown/plain";
 
 function DeletedRow({
   note,
@@ -85,30 +89,18 @@ function DeletedRow({
         </View>
       </View>
 
-      <Pressable
+      <Button
+        label="Restore"
+        icon="restore"
+        variant="secondary"
+        size="sm"
         onPress={onRestore}
-        hitSlop={theme.spacing.xs}
-        accessibilityRole="button"
         accessibilityLabel={`Restore ${hasTitle ? note.title : "untitled note"}`}
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          gap: theme.spacing.sm,
-          minHeight: TOUCH_TARGET - theme.spacing.md,
+        style={{
           marginRight: theme.spacing.md,
-          paddingHorizontal: theme.spacing.md,
-          borderRadius: theme.radius.md,
-          backgroundColor: pressed
-            ? theme.colors.accentSubtle
-            : theme.colors.surfaceSubtle,
-        })}
-      >
-        <Icon name="restore" size={16} color={theme.colors.accent} />
-
-        <AppText variant="caption" tone="accent">
-          Restore
-        </AppText>
-      </Pressable>
+          minHeight: TOUCH_TARGET - theme.spacing.md,
+        }}
+      />
     </Card>
   );
 }
@@ -138,40 +130,34 @@ export default function TrashScreen() {
    * gesture — reaching this dialog always takes a deliberate tap.
    */
   const confirmPurge = useCallback(
-    (note: Note) => {
+    async (note: Note) => {
       const label = note.title.trim();
 
-      Alert.alert(
-        "Delete forever?",
-        label
+      const agreed = await confirm({
+        title: "Delete forever?",
+        message: label
           ? `“${label}” will be gone for good. This cannot be undone.`
           : "This note will be gone for good. This cannot be undone.",
-        [
-          { text: "Keep", style: "cancel" },
-          {
-            text: "Delete forever",
-            style: "destructive",
-            onPress: () => purge(note.id),
-          },
-        ],
-      );
+        confirmLabel: "Delete forever",
+        cancelLabel: "Keep",
+        icon: "trash",
+      });
+
+      if (agreed) await purge(note.id);
     },
     [purge],
   );
 
-  const confirmPurgeAll = useCallback(() => {
-    Alert.alert(
-      "Empty Recently Deleted?",
-      `${deleted.length} ${deleted.length === 1 ? "note" : "notes"} will be gone for good. This cannot be undone.`,
-      [
-        { text: "Keep", style: "cancel" },
-        {
-          text: "Delete all",
-          style: "destructive",
-          onPress: () => purgeAll(),
-        },
-      ],
-    );
+  const confirmPurgeAll = useCallback(async () => {
+    const agreed = await confirm({
+      title: "Empty Recently Deleted?",
+      message: `${deleted.length} ${deleted.length === 1 ? "note" : "notes"} will be gone for good. This cannot be undone.`,
+      confirmLabel: "Delete all",
+      cancelLabel: "Keep",
+      icon: "trash",
+    });
+
+    if (agreed) await purgeAll();
   }, [deleted.length, purgeAll]);
 
   return (

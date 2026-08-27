@@ -3,6 +3,7 @@ import { PanResponder, View } from "react-native";
 import { Stack } from "expo-router";
 
 import Sidebar from "@/src/components/Sidebar";
+import { DEEPER, LATERAL } from "@/src/navigation/transitions";
 import { useSidebarStore } from "@/src/store/sidebar-store";
 import { useTheme } from "@/src/theme";
 
@@ -47,11 +48,16 @@ export default function AppLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          // Opening a note is a push into detail, so it slides.
-          animation: "slide_from_right",
           contentStyle: { backgroundColor: theme.colors.background },
+          // The sidebar's destinations are siblings, not a hierarchy. See
+          // `navigation/transitions` for why that rules out a slide.
+          ...LATERAL,
         }}
-      />
+      >
+        {/* Opening a note *is* going deeper, and it is the one place a slide is
+            correct: it leaves the list feeling like it is still there, behind. */}
+        <Stack.Screen name="note/[id]" options={DEEPER} />
+      </Stack>
 
       {/* Rendered outside the navigator so it covers whichever screen is on top,
           and so switching destinations does not animate the panel with them. */}

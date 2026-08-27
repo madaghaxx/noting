@@ -9,18 +9,17 @@ export type IconName =
   | "plus"
   | "check"
   | "chevronLeft"
-  | "chevronRight"
   | "alert"
   | "pin"
   | "menu"
   | "list"
+  | "search"
   | "notes"
   | "trash"
-  | "image"
-  | "sliders"
   | "restore"
   | "close"
-  | "key";
+  | "eye"
+  | "eyeOff";
 
 type Props = {
   name: IconName;
@@ -175,23 +174,6 @@ export default function Icon({
               marginLeft: -size * 0.06,
               borderLeftWidth: stroke,
               borderBottomWidth: stroke,
-              borderColor: tint,
-              transform: [{ rotate: "45deg" }],
-            }}
-          />
-        </View>
-      );
-
-    case "chevronRight":
-      return (
-        <View style={[styles.center, box]}>
-          <View
-            style={{
-              width: size * 0.32,
-              height: size * 0.32,
-              marginRight: -size * 0.06,
-              borderRightWidth: stroke,
-              borderTopWidth: stroke,
               borderColor: tint,
               transform: [{ rotate: "45deg" }],
             }}
@@ -386,6 +368,40 @@ export default function Icon({
         </View>
       );
 
+    /** A lens with a handle. The other icon whose meaning is purely conventional. */
+    case "search": {
+      const lens = size * 0.58;
+
+      return (
+        <View style={[styles.center, box]}>
+          <View
+            style={{
+              width: lens,
+              height: lens,
+              marginTop: -size * 0.06,
+              marginLeft: -size * 0.06,
+              borderRadius: size,
+              borderWidth: stroke,
+              borderColor: tint,
+            }}
+          />
+
+          <View
+            style={{
+              position: "absolute",
+              right: size * 0.16,
+              bottom: size * 0.16,
+              width: size * 0.26,
+              height: stroke,
+              borderRadius: stroke,
+              backgroundColor: tint,
+              transform: [{ rotate: "45deg" }],
+            }}
+          />
+        </View>
+      );
+    }
+
     /** A bulleted list: three rules, each with its own dot. */
     case "list":
       return (
@@ -512,83 +528,6 @@ export default function Icon({
         </View>
       );
 
-    /** A framed picture: horizon, sun, and a peak breaking the baseline. */
-    case "image":
-      return (
-        <View style={[styles.center, box]}>
-          <View
-            style={{
-              width: size * 0.82,
-              height: size * 0.68,
-              borderRadius: size * 0.16,
-              borderWidth: stroke,
-              borderColor: tint,
-              overflow: "hidden",
-              justifyContent: "flex-end",
-            }}
-          >
-            <View
-              style={{
-                position: "absolute",
-                top: size * 0.1,
-                left: size * 0.1,
-                width: size * 0.13,
-                height: size * 0.13,
-                borderRadius: size,
-                backgroundColor: tint,
-              }}
-            />
-
-            <View
-              style={{
-                alignSelf: "center",
-                marginBottom: -stroke,
-                width: 0,
-                height: 0,
-                borderLeftWidth: size * 0.2,
-                borderRightWidth: size * 0.2,
-                borderBottomWidth: size * 0.26,
-                borderLeftColor: "transparent",
-                borderRightColor: "transparent",
-                borderBottomColor: tint,
-              }}
-            />
-          </View>
-        </View>
-      );
-
-    /** Sliders. Settings as adjustment rather than as machinery. */
-    case "sliders":
-      return (
-        <View style={[styles.center, box, { gap: size * 0.19 }]}>
-          {[0.62, 0.34, 0.5].map((knobAt, index) => (
-            <View key={index} style={{ justifyContent: "center" }}>
-              <View
-                style={{
-                  width: size * 0.78,
-                  height: stroke,
-                  borderRadius: stroke,
-                  backgroundColor: tint,
-                }}
-              />
-
-              <View
-                style={{
-                  position: "absolute",
-                  left: size * 0.78 * knobAt - size * 0.075,
-                  width: size * 0.15,
-                  height: size * 0.15,
-                  borderRadius: size,
-                  borderWidth: stroke,
-                  borderColor: tint,
-                  backgroundColor: theme.colors.background,
-                }}
-              />
-            </View>
-          ))}
-        </View>
-      );
-
     /** An arrow lifting out of a tray: bring this back. */
     case "restore":
       return (
@@ -650,50 +589,68 @@ export default function Icon({
         </View>
       );
 
-    /** A key: ring and shaft with two teeth. Stands for the passcode. */
-    case "key":
+    /**
+     * An eye, and the same eye struck through: the editor's View/Edit toggle.
+     *
+     * The almond is a square rotated 45° with two *opposite* corners rounded away.
+     * That is the only way to get a shape that comes to a point at both ends out of
+     * a box model — RN has no elliptical corner radii, and rounding all four
+     * corners of a wide box gives a stadium, which reads as a toggle switch rather
+     * than an eye (it did, on the first attempt).
+     *
+     * The pupil is a circle, so it needs no counter-rotation.
+     *
+     * `eyeOff` draws its slash straight over the almond with no gap knocked out
+     * beneath it. A gap would have to be painted in the colour of whichever surface
+     * the icon happens to sit on, which an icon cannot know — and at the 15–20pt
+     * sizes this is used at, the ungapped version is if anything the cleaner of the
+     * two. A hardcoded knockout, by contrast, cuts a visibly wrong-coloured bar
+     * across the glyph the moment it lands on a tinted pill.
+     */
+    case "eye":
+    case "eyeOff": {
+      const side = size * 0.62;
+
       return (
         <View style={[styles.center, box]}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <View
+            style={{
+              width: side,
+              height: side,
+              transform: [{ rotate: "45deg" }],
+              borderWidth: stroke,
+              borderColor: tint,
+              borderTopLeftRadius: side,
+              borderBottomRightRadius: side,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
             <View
               style={{
-                width: size * 0.42,
-                height: size * 0.42,
+                width: size * 0.19,
+                height: size * 0.19,
                 borderRadius: size,
-                borderWidth: stroke,
-                borderColor: tint,
+                backgroundColor: tint,
               }}
             />
-
-            <View style={{ justifyContent: "center" }}>
-              <View
-                style={{
-                  width: size * 0.42,
-                  height: stroke,
-                  borderTopRightRadius: stroke,
-                  borderBottomRightRadius: stroke,
-                  backgroundColor: tint,
-                }}
-              />
-
-              {[0.12, 0.28].map((left) => (
-                <View
-                  key={left}
-                  style={{
-                    position: "absolute",
-                    top: stroke,
-                    left: size * left,
-                    width: stroke,
-                    height: size * 0.14,
-                    borderRadius: stroke,
-                    backgroundColor: tint,
-                  }}
-                />
-              ))}
-            </View>
           </View>
+
+          {name === "eyeOff" && (
+            <View
+              style={{
+                position: "absolute",
+                width: size * 0.94,
+                height: stroke,
+                borderRadius: stroke,
+                backgroundColor: tint,
+                transform: [{ rotate: "-45deg" }],
+              }}
+            />
+          )}
         </View>
       );
+    }
   }
 }
 

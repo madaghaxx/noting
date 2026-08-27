@@ -20,21 +20,35 @@ export type LockDecision =
 
 export function decideForAppState(
   next: AppStateStatus,
-  context: { isUnlocked: boolean; isAuthenticating: boolean },
+  context: {
+    isUnlocked: boolean;
+    isAuthenticating: boolean;
+    /**
+     * Authentication has succeeded but the guard has not opened yet — the store
+     * is holding the success confirmation on screen for one beat.
+     */
+    isUnlocking?: boolean;
+  },
 ): LockDecision {
   // Mid-authentication, the app is *expected* to lose the foreground: the platform
   // may put its PIN or pattern screen in front, which is a separate activity.
   // Reacting to that would cancel the unlock in progress, every time.
   if (context.isAuthenticating) return "ignore";
 
+  if (next === "active") return "reveal";
+
+  // The gap between a successful fingerprint and the notes appearing. Leaving the
+  // foreground here has to lock, or the pending unlock would complete while the
+  // app sat in the background and the notes would be waiting, open, on return.
+  if (!context.isUnlocked && context.isUnlocking) {
+    return next === "background" ? "lock" : "shield";
+  }
+
   // Already locked: there is nothing on screen worth hiding, and locking again
   // would restart the unlock screen's own animations underneath the shield.
-  if (!context.isUnlocked) return next === "active" ? "reveal" : "ignore";
+  if (!context.isUnlocked) return "ignore";
 
   switch (next) {
-    case "active":
-      return "reveal";
-
     case "background":
       return "lock";
 
