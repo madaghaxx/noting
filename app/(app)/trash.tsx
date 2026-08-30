@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
-import { Animated, FlatList, View } from "react-native";
+import { useCallback, useEffect } from "react";
+import { Animated, FlatList, Pressable, View } from "react-native";
 
 import ErrorBanner from "@/src/components/ErrorBanner";
 import ScreenHeader from "@/src/components/ScreenHeader";
@@ -9,7 +9,6 @@ import Button from "@/src/components/ui/Button";
 import Card from "@/src/components/ui/Card";
 import Icon from "@/src/components/ui/Icon";
 import Screen from "@/src/components/ui/Screen";
-import Spinner from "@/src/components/ui/Spinner";
 import StateView from "@/src/components/ui/StateView";
 import { useStaggeredEntrance } from "@/src/hooks/use-entrance";
 import { toPlainText } from "@/src/markdown/plain";
@@ -171,7 +170,6 @@ export default function TrashScreen() {
               : `${deleted.length} ${deleted.length === 1 ? "note" : "notes"} recoverable`
           }
           leading={{
-            icon: "menu",
             onPress: openSidebar,
             label: "Open navigation",
           }}
@@ -201,29 +199,7 @@ export default function TrashScreen() {
         </ScreenHeader>
       </Animated.View>
 
-      {error && (
-        <Pressable
-          onPress={clearError}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss error"
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: theme.spacing.md,
-            marginHorizontal: theme.spacing.xl,
-            marginBottom: theme.spacing.md,
-            padding: theme.spacing.md,
-            borderRadius: theme.radius.lg,
-            backgroundColor: theme.colors.dangerSubtle,
-          }}
-        >
-          <Icon name="alert" size={18} color={theme.colors.danger} />
-
-          <AppText variant="caption" tone="danger" style={{ flex: 1 }}>
-            {error}
-          </AppText>
-        </Pressable>
-      )}
+      {error && <ErrorBanner message={error} onDismiss={clearError} />}
 
       <Animated.View style={[entrance[1], { flex: 1 }]}>
         {deleted.length === 0 ? (
