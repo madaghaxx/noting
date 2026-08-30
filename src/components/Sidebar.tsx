@@ -21,7 +21,6 @@ import {
   type BadgeSource,
   type Destination,
 } from "@/src/navigation/destinations";
-import { useAuthStore } from "@/src/store/auth-store";
 import { lockEverything } from "@/src/store/lock";
 import { useNotesStore } from "@/src/store/notes-store";
 import { useSidebarStore } from "@/src/store/sidebar-store";
@@ -36,6 +35,13 @@ const CLOSE_DISTANCE = 56;
 
 /** A flick closes it regardless of distance. */
 const CLOSE_VELOCITY = 0.35;
+
+/**
+ * A press routinely drifts a few pixels before it is released. The responder
+ * must not steal that gesture from a destination row; this is deliberately well
+ * below the distance that closes the panel, but high enough to mean "drag".
+ */
+const CLOSE_GESTURE_ACTIVATION = 16;
 
 function Row({
   destination,
@@ -179,10 +185,11 @@ export default function Sidebar() {
 
   const responder = useRef(
     PanResponder.create({
-      // Only a horizontal drag, and only leftwards: the panel's own content may
-      // scroll, and a vertical gesture belongs to it.
+      // Only claim an intentional horizontal drag. The old 6px threshold was
+      // small enough for normal tap jitter, cancelling the first row press.
       onMoveShouldSetPanResponder: (_event, gesture) =>
-        gesture.dx < -6 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+        gesture.dx < -CLOSE_GESTURE_ACTIVATION &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
 
       onPanResponderMove: (_event, gesture) => {
         drag.setValue(Math.min(0, gesture.dx));
