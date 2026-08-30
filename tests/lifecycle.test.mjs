@@ -2,9 +2,8 @@
  * What a change in app lifecycle does to the lock.
  *
  * The rule that matters most is the one that looks like an omission: the app must
- * *not* react while authentication is in flight. The platform's own PIN screen is a
- * separate activity, so it takes Noting out of the foreground — and an app that
- * locks on that event locks itself out of the unlock it just started, forever.
+ * cover an authentication prompt while it is temporarily inactive, and still
+ * relock if the application genuinely moves to the background.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -31,24 +30,16 @@ test("coming back uncovers the screen", () => {
   assert.equal(decideForAppState("active", locked), "reveal");
 });
 
-test("nothing happens to the lock while authenticating", () => {
-  // Every state, because the platform's credential screen can produce any of them.
-  for (const state of ["background", "inactive", "active", "unknown"]) {
-    assert.equal(
-      decideForAppState(state, authenticating),
-      "ignore",
-      `${state} interfered with authentication`,
-    );
-  }
+test("authentication is covered while inactive and cancelled by backgrounding", () => {
+  assert.equal(decideForAppState("inactive", authenticating), "shield");
+  assert.equal(decideForAppState("background", authenticating), "lock");
+  assert.equal(decideForAppState("active", authenticating), "reveal");
 });
 
-test("authenticating takes priority even when the app is unlocked", () => {
-  // Not reachable today, since authentication only ever starts from the locked
-  // screen. Asserted anyway because it fixes the precedence: the guard is about
-  // authentication being in flight, not about which side of the lock it started on.
+test("backgrounding takes priority even if authentication began while unlocked", () => {
   assert.equal(
     decideForAppState("background", { isUnlocked: true, isAuthenticating: true }),
-    "ignore",
+    "lock",
   );
 });
 

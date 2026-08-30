@@ -4,10 +4,8 @@ import type { AppStateStatus } from "react-native";
  * What a change in app lifecycle should do to the lock.
  *
  * Pulled out as a pure function because the interesting part is not the
- * subscription — it is the rules, and the rules have a trap in them: the system's
- * own credential screen takes the app out of the foreground, so an app that locks
- * on every background event locks itself out of the authentication it just started
- * and can never be unlocked.
+ * subscription — it is the rules. A biometric prompt may make the app inactive,
+ * but an actual background transition must always revoke access.
  */
 export type LockDecision =
   /** Leave the foreground for real: clear the notes and require auth again. */
@@ -30,12 +28,13 @@ export function decideForAppState(
     isUnlocking?: boolean;
   },
 ): LockDecision {
-  // Mid-authentication, the app is *expected* to lose the foreground: the platform
-  // may put its PIN or pattern screen in front, which is a separate activity.
-  // Reacting to that would cancel the unlock in progress, every time.
-  if (context.isAuthenticating) return "ignore";
-
   if (next === "active") return "reveal";
+
+  // A biometric sheet can temporarily make the app inactive. Keep it covered
+  // while the system prompt is open, but fail closed if the app actually leaves.
+  if (context.isAuthenticating) {
+    return next === "background" ? "lock" : "shield";
+  }
 
   // The gap between a successful fingerprint and the notes appearing. Leaving the
   // foreground here has to lock, or the pending unlock would complete while the
