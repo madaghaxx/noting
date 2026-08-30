@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { View } from "react-native";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 
 import ConfirmDialog from "@/src/components/ConfirmDialog";
 import PrivacyShield from "@/src/components/PrivacyShield";
@@ -20,6 +21,13 @@ function RootNavigator() {
   const confirmRequest = useConfirmStore((state) => state.request);
   const dismissConfirm = useConfirmStore((state) => state.dismiss);
 
+  // The protected group is recreated after every unlock. Make its entry point
+  // explicit rather than inheriting whichever protected route existed before
+  // locking (or a dynamic editor route chosen during navigator restoration).
+  useEffect(() => {
+    if (isUnlocked) router.replace("/");
+  }, [isUnlocked]);
+
   // Owns relocking: mounted above the guard, so the listener survives every
   // navigation and both halves of the app.
   const shielded = useAppLock();
@@ -27,6 +35,7 @@ function RootNavigator() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <Stack
+        initialRouteName="(auth)"
         screenOptions={{
           headerShown: false,
           // Locking and unlocking are not pushes. See `navigation/transitions`.

@@ -94,7 +94,17 @@ export default function NoteEditorScreen() {
   // Store is loaded and this id isn't in it — deleted from elsewhere.
   const isMissing = !isNew && !existing && status === "ready";
 
-  const close = () => router.back();
+  // The editor can be the first route after a navigator restoration, where
+  // `back()` has no parent entry and React Navigation emits GO_BACK warnings.
+  // Its safe destination is always the notes list.
+  const close = () => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    router.replace("/");
+  };
 
   const handleFormat = useCallback(
     (action: FormatAction) => {
@@ -355,7 +365,6 @@ export default function NoteEditorScreen() {
             showsVerticalScrollIndicator={false}
           >
             <Input
-              variant="plain"
               textVariant="title"
               value={title}
               onChangeText={setTitle}
@@ -368,7 +377,6 @@ export default function NoteEditorScreen() {
             {/* scrollEnabled off so the ScrollView owns scrolling — the field grows
                 with its content instead of becoming a nested scroller. */}
             <Input
-              variant="plain"
               textVariant="bodyLarge"
               value={content}
               onChangeText={setContent}

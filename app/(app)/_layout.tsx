@@ -46,6 +46,7 @@ export default function AppLayout() {
   return (
     <View style={{ flex: 1 }} {...edgeSwipe.panHandlers}>
       <Stack
+        initialRouteName="index"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.colors.background },

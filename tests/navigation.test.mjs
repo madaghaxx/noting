@@ -16,12 +16,12 @@ import {
 test("the sidebar offers every required destination, in order", () => {
   assert.deepEqual(
     DESTINATIONS.map((destination) => destination.key),
-    ["all", "pinned", "trash", "images"],
+    ["all", "pinned", "trash"],
   );
 
   assert.deepEqual(
     DESTINATIONS.map((destination) => destination.label),
-    ["All Notes", "Pinned", "Recently Deleted", "Favorite Images"],
+    ["All Notes", "Pinned", "Recently Deleted"],
   );
 });
 
@@ -47,15 +47,12 @@ test("every destination has an icon, and only counted ones have a badge", () => 
     }
   }
 
-  // Images has nothing to count yet.
-  assert.equal(DESTINATIONS.find((d) => d.key === "images").badge, undefined);
 });
 
 test("the highlighted row follows the route on screen", () => {
   assert.equal(activeDestination("/"), "all");
   assert.equal(activeDestination("/pinned"), "pinned");
   assert.equal(activeDestination("/trash"), "trash");
-  assert.equal(activeDestination("/images"), "images");
 });
 
 test("the editor keeps the notes row highlighted", () => {
