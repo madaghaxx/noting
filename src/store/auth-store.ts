@@ -59,10 +59,8 @@ let attempt = 0;
 /**
  * Biometrics are the only way into Noting.
  *
- * When the sensor cannot be used at all, the way through is the device's own PIN
- * or pattern, which the platform offers inside its prompt — see `authenticate` in
- * `auth-service`. The app has no credential of its own, so there is nothing here
- * that unlocks the notes without the platform agreeing to it first.
+ * Biometrics are deliberately the only route through this gate. There is no
+ * passcode, device-credential fallback, or app-created credential.
  */
 export const useAuthStore = create<AuthState>((set, get) => ({
   status: "probing",
@@ -90,9 +88,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           status: "unavailable",
           capability,
-          message: capability.hasDeviceCredential
-            ? "This device has no biometric sensor. Use your device PIN instead."
-            : "This device has no biometric sensor, and no screen lock is set.",
+          message: "This device has no biometric sensor available.",
         });
         return;
       }
@@ -102,7 +98,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           status: "notEnrolled",
           capability,
           message:
-            "No biometrics are enrolled yet. Add one in your device settings, or use your device PIN.",
+            "No biometrics are enrolled yet. Add one in your device settings.",
         });
         return;
       }
@@ -166,8 +162,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           status: "lockedOut",
           message: outcome.permanent
-            ? "Too many attempts. Unlock your device with its PIN to re-enable biometrics."
-            : "Too many attempts. Biometrics are locked for a moment — try your device PIN.",
+            ? "Too many attempts. Re-enable biometrics in your device settings."
+            : "Too many attempts. Biometrics are locked for a moment.",
         });
         return;
 
@@ -175,15 +171,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({
           status: "notEnrolled",
           message:
-            "No biometrics are enrolled yet. Add one in your device settings, or use your device PIN.",
-        });
-        return;
-
-      case "noDeviceCredential":
-        set({
-          status: "unavailable",
-          message:
-            "No screen lock is set on this device, so there is nothing to verify against.",
+            "No biometrics are enrolled yet. Add one in your device settings.",
         });
         return;
 

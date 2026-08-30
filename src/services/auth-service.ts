@@ -17,8 +17,6 @@ export type Capability = {
   kinds: BiometricKind[];
   /** The modality to name in UI copy, when there is one. */
   primary: BiometricKind | null;
-  /** A PIN, pattern or password is set, so credential fallback can succeed. */
-  hasDeviceCredential: boolean;
 };
 
 /**
@@ -32,8 +30,7 @@ export type AuthOutcome =
   | { kind: "failed"; message: string }
   | { kind: "lockedOut"; permanent: boolean }
   | { kind: "notEnrolled" }
-  | { kind: "unavailable" }
-  | { kind: "noDeviceCredential" };
+  | { kind: "unavailable" };
 
 function toKind(
   type: LocalAuthentication.AuthenticationType,
@@ -103,11 +100,10 @@ export function methodIcon(kind: BiometricKind | null): IconName {
 }
 
 export async function probeCapability(): Promise<Capability> {
-  const [hasHardware, isEnrolled, types, level] = await Promise.all([
+  const [hasHardware, isEnrolled, types] = await Promise.all([
     LocalAuthentication.hasHardwareAsync(),
     LocalAuthentication.isEnrolledAsync(),
     LocalAuthentication.supportedAuthenticationTypesAsync(),
-    LocalAuthentication.getEnrolledLevelAsync(),
   ]);
 
   const kinds = types
@@ -119,7 +115,6 @@ export async function probeCapability(): Promise<Capability> {
     isEnrolled,
     kinds,
     primary: pickPrimary(kinds),
-    hasDeviceCredential: level !== LocalAuthentication.SecurityLevel.NONE,
   };
 }
 
@@ -137,9 +132,6 @@ function mapError(error: string): AuthOutcome {
     case "app_cancel":
       return { kind: "cancelled" };
 
-    // The user picked the prompt's own device-credential button. The platform
-    // takes over from there, so there is nothing for the app to route to —
-    // whatever happens next arrives as its own result.
     case "user_fallback":
       return { kind: "cancelled" };
 
@@ -149,9 +141,6 @@ function mapError(error: string): AuthOutcome {
     case "not_available":
     case "invalid_context":
       return { kind: "unavailable" };
-
-    case "passcode_not_set":
-      return { kind: "noDeviceCredential" };
 
     case "lockout":
       return { kind: "lockedOut", permanent: false };
@@ -189,10 +178,8 @@ function mapError(error: string): AuthOutcome {
 /**
  * Opens the platform's biometric prompt.
  *
- * This is the only way into Noting. `disableDeviceFallback: false` matters more
- * because of that: it leaves the device's own PIN or pattern reachable inside the
- * system prompt, which is what still opens the notes when the sensor is locked out
- * or refuses to read. The app holds no credential of its own to fall back to.
+ * This is the only way into Noting. Device credentials are explicitly disabled:
+ * the app never offers a passcode, PIN, pattern, or app-created fallback.
  *
  * @param method  Named in the prompt so the sentence matches the sensor the device
  *                is about to use ("Confirm with Face ID").
@@ -210,10 +197,14 @@ export async function authenticate(
         ? "Confirm it’s you to open your notes"
         : `Confirm with ${named} to open your notes`,
     cancelLabel: "Cancel",
-    disableDeviceFallback: false,
-    // Class 3 biometrics only. The default ('weak') also admits 2D camera face
-    // unlock, which is not a credential a private notebook should accept.
-    biometricsSecurityLevel: "strong",
+    disableDeviceFallback: true,
+    // iOS otherwise exposes "Use Passcode" after failed attempts. An empty label
+    // removes that control while retaining the platform's biometric prompt.
+    fallbackLabel: "",
+    // Let Android's system prompt accept every enrolled biometric modality it
+    // supports, including Class 2 camera face recognition and fingerprints.
+    // The platform, not this app, chooses which eligible sensor is presented.
+    biometricsSecurityLevel: "weak",
   });
 
   if (result.success) {

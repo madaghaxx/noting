@@ -23,13 +23,11 @@ import {
   AuthenticationType,
   deviceCalls,
   resetDevice,
-  SecurityLevel,
   setDevice,
 } from "./support/expo-local-authentication.mjs";
 
 const FINGERPRINT = AuthenticationType.FINGERPRINT;
 const FACE = AuthenticationType.FACIAL_RECOGNITION;
-const IRIS = AuthenticationType.IRIS;
 
 test("a fingerprint-only device reports fingerprint", async () => {
   resetDevice();
@@ -104,17 +102,6 @@ test("an unrecognised sensor type is ignored rather than guessed at", async () =
   assert.deepEqual((await probeCapability()).kinds, ["fingerprint"]);
 });
 
-test("a device with no screen lock has no credential fallback", async () => {
-  resetDevice();
-  setDevice({ level: SecurityLevel.NONE });
-
-  assert.equal((await probeCapability()).hasDeviceCredential, false);
-
-  setDevice({ level: SecurityLevel.SECRET });
-
-  assert.equal((await probeCapability()).hasDeviceCredential, true);
-});
-
 test("methods are named the way each platform names them", () => {
   assert.equal(describeMethod("face", "ios"), "Face ID");
   assert.equal(describeMethod("fingerprint", "ios"), "Touch ID");
@@ -160,7 +147,7 @@ test("with no modality detected the prompt stays generic", async () => {
   assert.equal(options.promptSubtitle, "Confirm it’s you to open your notes");
 });
 
-test("only strong biometrics are accepted, and device fallback stays available", async () => {
+test("all enrolled biometric modalities are accepted, with no credential fallback", async () => {
   resetDevice();
   setDevice({ result: { success: true } });
 
@@ -168,13 +155,13 @@ test("only strong biometrics are accepted, and device fallback stays available",
 
   const [options] = deviceCalls();
 
-  // 'weak' would admit 2D camera face unlock, which is not a credential a private
-  // notebook should accept.
-  assert.equal(options.biometricsSecurityLevel, "strong");
+  // SDK 54's 'weak' level permits both Class 2 face recognition and fingerprints.
+  // The Android system prompt chooses the enrolled sensor; the app never requests
+  // a fingerprint specifically.
+  assert.equal(options.biometricsSecurityLevel, "weak");
 
-  // The platform's own PIN or pattern remains reachable inside the prompt: it is
-  // the way in when the sensor is locked out.
-  assert.equal(options.disableDeviceFallback, false);
+  assert.equal(options.disableDeviceFallback, true);
+  assert.equal(options.fallbackLabel, "");
 });
 
 test("success is success", async () => {
@@ -195,7 +182,7 @@ test("every documented error maps to a situation the screen can explain", async 
     not_enrolled: "notEnrolled",
     not_available: "unavailable",
     invalid_context: "unavailable",
-    passcode_not_set: "noDeviceCredential",
+    passcode_not_set: "failed",
     lockout: "lockedOut",
     lockout_permanent: "lockedOut",
     authentication_failed: "failed",

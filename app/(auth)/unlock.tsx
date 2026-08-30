@@ -82,16 +82,8 @@ export default function UnlockScreen() {
 
   const method = capability?.primary ?? null;
   const methodName = describeMethod(method, Platform.OS);
-  const hasDevicePin = capability?.hasDeviceCredential ?? false;
-
-  /**
-   * Offer biometrics only where they can actually work.
-   *
-   * The device-credential fallback lives inside the system prompt, so the button
-   * still leads somewhere useful when the sensor is locked out — but on a device
-   * with no sensor and no screen lock at all, it leads nowhere and is not shown.
-   */
-  const offerBiometrics = hasBiometrics || (hasDevicePin && !biometricsBlocked);
+  /** Offer the prompt only where enrolled biometrics can actually work. */
+  const offerBiometrics = hasBiometrics && !biometricsBlocked;
 
   // Try the sensor as soon as the screen settles. Nobody opens a locked notebook
   // in order to look at the lock.
