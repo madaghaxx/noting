@@ -143,6 +143,40 @@ npx expo run:ios --configuration Release
 
 **Release target note:** because Noting uses native biometric functionality, Expo Go is not a valid release target. Ship a real native build.
 
+### Build the APK locally with Gradle
+
+Requirements:
+
+- Android SDK (with `platform-tools`, `build-tools` 36, and the `android-36` platform)
+- JDK 17 (`JAVA_HOME` must point to it — Gradle builds fail on newer JDKs for this toolchain)
+- Accept Android SDK licenses (`~/Android/Sdk/licenses`)
+
+The project uses Continuous Native Generation (CNG), so the `android/` folder is generated and can be regenerated at any time.
+
+```bash
+# 1. Generate the native Android project (creates ./android)
+npx expo prebuild --platform android
+
+# 2. Build the release APK
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64   # your JDK 17 path
+export ANDROID_HOME=$HOME/Android/Sdk
+export ANDROID_SDK_ROOT=$HOME/Android/Sdk
+./android/gradlew -p android assembleRelease
+```
+
+The APK is written to:
+
+```text
+android/app/build/outputs/apk/release/app-release.apk
+```
+
+Notes:
+
+- The first build downloads Gradle 8.14.3, CMake, the NDK, and project dependencies, and compiles all native modules — expect it to take ~15–20 minutes.
+- The generated APK is a multi-ABI (fat) build supporting `arm64-v8a`, `armeabi-v7a`, `x86_64`, and `x86`.
+- The release APK is signed with the default Android **debug keystore** unless you configure release signing in `android/app/build.gradle`. Configure signing before distributing.
+- Use `assembleDebug` for a debug build.
+
 ## iOS notes
 
 - `expo-local-authentication` does **not** support Face ID in Expo Go. Face ID must be verified in a development or standalone/release build.

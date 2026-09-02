@@ -8,6 +8,7 @@ node_modules/
 dist/
 web-build/
 expo-env.d.ts
+*.apk
 
 # Native
 .kotlin/
@@ -41,3 +42,4 @@ yarn-error.*
 /ios
 /android
 .claude/
+Noting-release.apk
